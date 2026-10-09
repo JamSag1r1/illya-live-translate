@@ -4,6 +4,8 @@
 huggingface.co 与其 xet 存储在这台机器上不可达，所以走魔搭镜像：
     pengzhendong/faster-whisper-{tiny,base,small,medium,large-v3,large-v3-turbo}
 """
+from __future__ import annotations      # 让 Path | None 这类写法在 Python 3.9 上也能跑
+
 import argparse
 import sys
 import time
