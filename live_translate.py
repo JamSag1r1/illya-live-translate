@@ -591,7 +591,11 @@ def main():
     cap = None
     if args.input_device:
         from stream_source import DeviceCapture   # 从音频输入设备抓（macOS: BlackHole / Windows: dshow）
-        cap = DeviceCapture(args.input_device, args.input_format)
+        try:
+            cap = DeviceCapture(args.input_device, args.input_format)
+        except Exception as e:
+            print(f"[x] 打开音频设备失败：{e}")
+            return
     elif not (args.url or args.source == "url"):
         if os.name != "nt":
             print("[x] 这台系统没有 WASAPI 环回可抓：请用 --url 抓直播间，"
@@ -604,7 +608,11 @@ def main():
             print("[x] --source url 要同时给 --url，例如 --url https://live.bilibili.com/22105860")
             return
         from stream_source import StreamCapture     # 按网址直抓，不碰扬声器
-        cap = StreamCapture(args.url)
+        try:
+            cap = StreamCapture(args.url)
+        except Exception as e:                      # 网络/DNS、房间没开播…都别甩 traceback
+            print(f"[x] 抓流失败：{e}")
+            return
     cap.start()
 
     asr_q: queue.Queue = queue.Queue()

@@ -502,7 +502,13 @@ class App:
             return
         if self.proc.poll() is not None:
             self.stop()
-            self.v_status.set("进程已退出——看 logs/gui_run.log；可能是模型没下完或端口冲突。")
+            try:                                   # 把日志最后一行（通常是出错原因）显示到状态栏
+                tail = (HERE / "logs" / "gui_run.log").read_text(
+                    encoding="utf-8", errors="ignore").strip().splitlines()[-1]
+            except Exception:
+                tail = ""
+            self.v_status.set(f"进程已退出：{tail[:80]}" if tail
+                              else "进程已退出——看 logs/gui_run.log")
             return
         try:
             url = f"http://127.0.0.1:{self.v_port.get()}/api/lines?since={self.lines_seen}"

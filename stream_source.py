@@ -17,6 +17,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.error
 import urllib.request
 from pathlib import Path
 
@@ -94,8 +95,16 @@ def _api(url: str, referer: str | None = None, timeout: int = 25) -> dict:
     if referer:
         h["Referer"] = referer
     req = urllib.request.Request(url, headers=h)
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return json.loads(r.read())
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as r:
+            return json.loads(r.read())
+    except urllib.error.URLError as e:
+        # 别甩一屏 traceback：DNS/网络问题给一句人话（macOS 上开"全局代理"最常见）
+        reason = getattr(e, "reason", e)
+        raise RuntimeError(
+            f"连不上 B 站接口（{reason}）——多半是网络/DNS 问题："
+            f"开了代理的话看它是不是「全局模式」（国内域名要直连），或者换个 DNS 再试"
+        ) from e
 
 
 def bilibili_room_id(text: str) -> str | None:
