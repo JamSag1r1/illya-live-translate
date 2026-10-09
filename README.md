@@ -153,7 +153,7 @@ python live_gui.py
 
 ## 模型
 
-仓库里**不含任何模型权重**（识别模型好几个 GB）。
+仓库里**不含任何模型权重**
 
 - **识别模型**：首次使用时自动从魔搭 ModelScope 下载到 `models/`（huggingface 在国内不通，所以走镜像）。`small` 约 460 MB，`medium` 1.5 GB，`large-v3` 3.1 GB。
 - **本地翻译模型**：需要把 NLLB-200 转成 CTranslate2 格式再用，转换脚本在 `tools/convert_mt_model.py`，步骤见 [docs/DEV-NOTES.md](docs/DEV-NOTES.md)。只想用云端 API 的话不需要它。
