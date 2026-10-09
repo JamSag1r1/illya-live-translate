@@ -20,7 +20,7 @@
 
 ## macOS 上怎么装（Mac 用户看这里）
 
-上面那个预编译 zip 是 **Windows 专用**（里面的 `.exe` 在 Mac 上跑不了）。Mac 上走源码，三步：
+上面那个预编译 zip 是 **Windows 专用**（里面的 `.exe` 在 Mac 上跑不了）。Mac 安装步骤为：
 
 ```bash
 # 1) 依赖（Homebrew 没装的话先看 https://brew.sh）
