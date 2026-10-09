@@ -24,6 +24,13 @@ import webbrowser
 from collections import deque
 from pathlib import Path
 
+# ⚠️ 本地回环必须绕过代理：用户（或 run_gui.bat）设了 HTTP_PROXY 时，界面读自己的字幕接口
+# http://127.0.0.1:8777/api/lines 也会被塞进代理 → 读不到 → **界面和浮窗永远没字**（踩过一次）
+for _k in ("NO_PROXY", "no_proxy"):
+    _v = os.environ.get(_k, "")
+    if "127.0.0.1" not in _v:
+        os.environ[_k] = (_v + "," if _v else "") + "127.0.0.1,localhost"
+
 FROZEN = getattr(sys, "frozen", False)
 HERE = Path(sys.executable).resolve().parent if FROZEN else Path(__file__).resolve().parent
 SETTINGS = HERE / "gui_settings.json"

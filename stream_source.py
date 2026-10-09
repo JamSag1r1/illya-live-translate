@@ -151,12 +151,41 @@ def resolve_bilibili_audio(text: str) -> tuple[str, dict]:
     return cands[0][1], {"Referer": ref, "User-Agent": UA}
 
 
+def _is_youtube(url: str) -> bool:
+    u = url.lower()
+    return "youtube.com" in u or "youtu.be" in u
+
+
 def _proxy_from_env() -> str | None:
-    """代理地址从环境变量读（用户开了系统级代理/TUN 就不用管这个）"""
+    """代理地址：先看环境变量"""
     for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
         if os.environ.get(k):
             return os.environ[k]
     return None
+
+
+def _fix_scheme(p: str | None) -> str | None:
+    if not p:
+        return None
+    p = p.strip()
+    return p if "://" in p else "http://" + p
+
+
+def detect_proxy() -> str | None:
+    """代理地址：环境变量 → 系统代理。
+
+    为什么要读系统代理：Python（yt-dlp）会自动读 Windows 注册表里的系统代理，但 **ffmpeg 不会**，
+    它只认环境变量/`-http_proxy` 参数。所以双击 exe 启动时（没有环境变量）必须由我们把系统代理
+    显式喂给 ffmpeg，否则 ffmpeg 直连 googlevideo 会被墙 —— 表现为「直链换出来了，但一字节都拉不到」。
+    """
+    p = _proxy_from_env()
+    if p:
+        return _fix_scheme(p)
+    try:
+        pr = urllib.request.getproxies()          # Windows 上会带上注册表里的系统代理
+        return _fix_scheme(pr.get("https") or pr.get("http"))
+    except Exception:
+        return None
 
 
 def resolve_youtube(text: str) -> tuple[str, dict]:
@@ -171,7 +200,7 @@ def resolve_youtube(text: str) -> tuple[str, dict]:
     opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True,
             "format": "bestaudio/best", "socket_timeout": 20, "retries": 2,
             "extractor_retries": 2, "nocheckcertificate": True}
-    proxy = _proxy_from_env()
+    proxy = detect_proxy()
     if proxy:
         opts["proxy"] = proxy
     try:
@@ -197,8 +226,7 @@ def resolve_youtube(text: str) -> tuple[str, dict]:
 
 def resolve(url: str) -> tuple[str, dict]:
     """任意地址 → (ffmpeg 地址, headers)"""
-    u = url.lower()
-    if "youtube.com" in u or "youtu.be" in u:
+    if _is_youtube(url):
         return resolve_youtube(url)
     if bilibili_room_id(url) and ("bilibili" in url or re.fullmatch(r"\d{2,10}", url.strip())):
         return resolve_bilibili_audio(url)
@@ -223,14 +251,25 @@ class StreamCapture:
 
     # ── 拉流进程 ──
     def _spawn(self):
-        hdr = "".join(f"{k}: {v}\r\n" for k, v in self.headers.items())
+        hdr = "".join(f"{k}: {v}" + chr(13) + chr(10) for k, v in self.headers.items())
         cmd = [ffmpeg_path(), "-hide_banner", "-loglevel", "error", "-headers", hdr,
                "-fflags", "nobuffer", "-flags", "low_delay",
                "-analyzeduration", "500000", "-probesize", "500000",
                "-i", self.url, "-vn", "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"]
+        env = None
+        # 只有 YouTube 这条路显式给代理（B 站是国内的，直连就好，别多事）。
+        # ⚠️ 实测：ffmpeg **没有** -https_proxy 这个命令行参数（报 Unrecognized option），
+        # 它也不读 Windows 系统代理；唯一可靠的办法是给子进程设环境变量 http_proxy / https_proxy。
+        # 不设的话，双击 exe（没有环境变量）时 ffmpeg 会直连 googlevideo → Connection failed。
+        if _is_youtube(self.url_arg):
+            px = detect_proxy()
+            if px:
+                env = dict(os.environ, http_proxy=px, https_proxy=px)
+                if getattr(self, "verbose", True):
+                    print(f"[stream] 走代理拉流：{px}")
         flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
         self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-                                      bufsize=0, creationflags=flags)   # 别弹黑色控制台
+                                      bufsize=0, creationflags=flags, env=env)   # 别弹黑色控制台
 
     def _read_exact(self, n: int) -> bytes:
         buf = b""
