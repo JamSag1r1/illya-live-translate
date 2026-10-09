@@ -40,9 +40,27 @@ bash setup_mac.sh
 
 - **识别模型**：第一次运行会问你要不要下载（`small` 约 460 MB，从魔搭 ModelScope 下，国内可直连）
 - **想离线翻译**：把 Windows 机器上的 `models/nllb-200-distilled-600M-ct2`（约 620 MB）拷进 `models/` 即可
-- **想抓"系统声音"**（不只是直播间）：装 BlackHole 虚拟声卡，再用 `--input-device ":<序号>"`
-  （序号用 `./.venv/bin/python live_translate.py --list-input-devices` 看）——完整步骤见
-  **[docs/MACOS.md](docs/MACOS.md)**
+- **想抓"系统声音"**（正在放的直播/视频/音乐，不只是直播间链接）：装个虚拟声卡就行
+  1. **装 BlackHole 2ch**：`brew install blackhole-2ch`；Homebrew 用不了就去官网下 `.pkg` 安装包
+     <https://existential.audio/blackhole/>（双击安装，会问系统密码）
+  2. 打开「**音频 MIDI 设置**」→ 左下角「**+**」→ **创建多输出设备** → 勾上你的「扬声器」**和**「BlackHole 2ch」；
+     再把系统输出切到这个多输出设备（这样你自己还听得见声音）
+  3. 看音频设备序号：
+     ```bash
+     ./.venv/bin/python live_translate.py --list-input-devices
+     ```
+     ⚠️ **只看 `AVFoundation audio devices` 那一段**（视频段跳过），序号按你自己机器上打出来的填，别照抄例子
+  4. 跑起来（`:<音频序号>`）：
+     ```bash
+     ./.venv/bin/python live_translate.py --input-device ":1" \
+         --src ja --device cpu --model-size small
+     ```
+     图形界面里则是：声音来源选「**抓音频输入设备**」，「输入设备」那一格填 `:1`
+  5. 会弹「是否允许访问麦克风」→ **点允许**
+
+  > **想先确认这条链通不通**：第 1–2 步可以先跳过，直接填你**内置麦克风**的序号（例如 `:2`），
+  > 对着电脑说句话——有字幕出来就说明抓音链路没问题，再去折腾 BlackHole。
+  > 更详细（含排查）见 **[docs/MACOS.md](docs/MACOS.md)**
 - Mac 上没有 NVIDIA 卡（CTranslate2 也没有 Metal 后端），识别模型建议 `small` / `medium`；
   `large-v3` 在 CPU 上跟不上直播
 
