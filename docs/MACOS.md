@@ -131,8 +131,8 @@ PyInstaller **不能跨平台编译**——.app 必须在 Mac 上打：
 - **`git clone` / `git fetch` 报 `Error in the HTTP2 framing layer`**（或连不上 github.com）：国内网络问题。
   给 Mac 挂上代理后让 git 也走代理 `git config --global http.proxy http://127.0.0.1:7890`（端口按实际改）；
   或者直接手动拷贝源码文件覆盖（最常改的是 `live_gui.py`）
-- **以前 clone 过，`git pull` 报 diverged / non-fast-forward**：仓库历史被重写过一次（去掉了某条提交里的
-  私人邮箱）。执行 `git fetch origin && git reset --hard origin/main` 对齐一次，以后 `pull` 就正常了
+- **以前 clone 过，`git pull` 报 diverged / non-fast-forward**：远端历史动过（本地没改过源码再这么处理）。
+  执行 `git fetch origin && git reset --hard origin/main` 对齐一次，以后 `pull` 就正常了
 - **界面里没有「抓系统声音」**：正常，Windows 专属；macOS 用「抓直播间网址」或「抓音频输入设备」
 - **浮窗拖右下角 `◢` 不好使**：用浮窗顶部的 `宽 −` `宽 ＋` `高 −` `高 ＋` 按钮
 - **`没找到 ffmpeg`** → `brew install ffmpeg`；或者 `export LIVE_TRANSLATE_FFMPEG=$(which ffmpeg)`
