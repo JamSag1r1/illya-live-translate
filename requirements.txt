@@ -1,7 +1,7 @@
-# 运行依赖（Python 3.10+，实测 3.11）
+# 运行依赖（Python 3.10+，实测 3.11 / 3.12）
 faster-whisper>=1.0
 ctranslate2>=4.5
 numpy
-pyaudiowpatch>=0.2.12      # Windows WASAPI 环回录音（抓系统声音）
+pyaudiowpatch>=0.2.12; sys_platform == "win32"   # 只有 Windows 需要（WASAPI 环回录音）
 requests
 sentencepiece              # 本地 NLLB 翻译用
