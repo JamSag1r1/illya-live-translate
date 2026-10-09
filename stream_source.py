@@ -172,17 +172,34 @@ def _fix_scheme(p: str | None) -> str | None:
 
 
 def detect_proxy() -> str | None:
-    """代理地址：环境变量 → 系统代理。
+    """代理地址：环境变量 → Windows 注册表（系统代理）→ Python 的 getproxies()。
 
-    为什么要读系统代理：Python（yt-dlp）会自动读 Windows 注册表里的系统代理，但 **ffmpeg 不会**，
-    它只认环境变量/`-http_proxy` 参数。所以双击 exe 启动时（没有环境变量）必须由我们把系统代理
-    显式喂给 ffmpeg，否则 ffmpeg 直连 googlevideo 会被墙 —— 表现为「直链换出来了，但一字节都拉不到」。
+    为什么还要自己读注册表：**打包成 exe 之后，Python 的 getproxies() 拿不到系统代理**
+    （实测：同一份代码源码里能拿到 http://127.0.0.1:7890，冻进 exe 就拿到空 → yt-dlp/ffmpeg
+    双双直连 YouTube 被墙）。注册表读取是确定能用的，所以当最后的兜底。
+
+    ffmpeg 那边更极端：它只认环境变量（http_proxy/https_proxy），连系统代理都不看。
     """
     p = _proxy_from_env()
     if p:
         return _fix_scheme(p)
+    if os.name == "nt":
+        try:
+            import winreg
+            sub = os.path.join("Software", "Microsoft", "Windows",
+                               "CurrentVersion", "Internet Settings")
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, sub) as k:
+                if winreg.QueryValueEx(k, "ProxyEnable")[0]:
+                    srv = str(winreg.QueryValueEx(k, "ProxyServer")[0])
+                    # 可能是 "http=127.0.0.1:7890;https=127.0.0.1:7890" 这种多协议写法
+                    if "=" in srv:
+                        pairs = dict(x.split("=", 1) for x in srv.split(";") if "=" in x)
+                        srv = pairs.get("https") or pairs.get("http") or srv
+                    return _fix_scheme(srv)
+        except Exception:
+            pass
     try:
-        pr = urllib.request.getproxies()          # Windows 上会带上注册表里的系统代理
+        pr = urllib.request.getproxies()          # Windows 上也会带注册表里的系统代理
         return _fix_scheme(pr.get("https") or pr.get("http"))
     except Exception:
         return None
@@ -201,6 +218,7 @@ def resolve_youtube(text: str) -> tuple[str, dict]:
             "format": "bestaudio/best", "socket_timeout": 20, "retries": 2,
             "extractor_retries": 2, "nocheckcertificate": True}
     proxy = detect_proxy()
+    print(f"[stream] yt-dlp 代理：{proxy or '直连（没检测到代理）'}")
     if proxy:
         opts["proxy"] = proxy
     try:
