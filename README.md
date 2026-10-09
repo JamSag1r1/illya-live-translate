@@ -181,6 +181,7 @@ live_translate.py     主流程：抓音 → VAD 切句 → Whisper 识别 → �
 live_gui.py           图形界面（exe 入口），含浮窗、API Key 弹窗、模型下载确认
 stream_source.py      B 站直播间取流（解析 + ffmpeg 拉流 + 断线重连）
 tools/                fetch_model.py 下模型 / convert_mt_model.py 转本地翻译模型 /
+                      build_windows_package.py 一条命令打 Windows 便携包（改完源码要发新版就用它）
                       make_portable_zip.py 打便携包 / test_*.py 各项自测
 docs/DEV-NOTES.md     开发笔记：踩过的所有坑、实测数据、打包细节（信息量最大的文件）
 ```

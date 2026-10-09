@@ -203,7 +203,9 @@ huggingface 不通，所以走魔搭镜像下载 HF 格式权重：
 
 ## 便携版（拷到别的电脑直接用）
 
-产出：`Illya-live-translate-tools-portable.zip`（**2.42 GB**，解压后 3.5 GB）。打包脚本：`tools/make_portable_zip.py`。**包里自带模型，解压就能用，不需要联网下载**：
+产出：`Illya-live-translate-tools-portable.zip`（**2.42 GB**，解压后 3.5 GB）。打包脚本：`tools/make_portable_zip.py`。
+
+**一键打包（推荐）**：`python tools/build_windows_package.py` —— 它会连着做完 PyInstaller 打包 → 拷 ffmpeg.exe → 清包内 `gui_settings.json` 的 api_key → 压 zip → 打印 gh 上传命令。想先看它会做什么加 `--dry-run`；要把离线翻译模型也塞进包加 `--with-model`（zip 会大 ~600 MB）。运行前确认在装了依赖的那个环境里（`sys.executable` 指向的 python 需要 pyinstaller）。**包里自带模型，解压就能用，不需要联网下载**：
 
 ```
 Illya-live-translate-tools\
