@@ -460,6 +460,7 @@ class App:
                                      stderr=subprocess.STDOUT, creationflags=flags, env=env)
         self.logfile = logf
         self.lines_seen = 0
+        self._started_at = time.time()             # 用来在状态栏显示"已等待多少秒"
         self.b_start.configure(state="disabled")
         self.b_stop.configure(state="normal")
         self.v_status.set("启动中…（第一次用某个模型要等它下载）")
@@ -512,7 +513,15 @@ class App:
             self.lines_seen = d.get("total", self.lines_seen)
             self.v_status.set(f"运行中 · 已翻 {self.lines_seen} 段")
         except Exception:
-            pass                    # 模型还在加载 / 网页没开
+            # 还没起来（模型在加载/下载，或卡住了）→ 把日志最后一行 + 已等待秒数显示出来，
+            # 这样"卡在启动中"时能直接看出卡在哪，不用去翻日志文件
+            try:
+                tail = (HERE / "logs" / "gui_run.log").read_text(
+                    encoding="utf-8", errors="ignore").strip().splitlines()[-1]
+            except Exception:
+                tail = ""
+            waited = int(time.time() - getattr(self, "_started_at", time.time()))
+            self.v_status.set(f"启动中… {waited}s" + (f" | {tail[:70]}" if tail else ""))
         self.root.after(800, self.poll)
 
     def append(self, l: dict):
