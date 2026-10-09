@@ -602,7 +602,12 @@ class App:
         if getattr(self, "overlay", None):
             self.overlay.close()
             return
-        self.overlay = SubtitleOverlay(self, font_size=int(self.v_font.get()))
+        try:
+            self.overlay = SubtitleOverlay(self, font_size=int(self.v_font.get()))
+        except Exception as e:                      # 别让平台差异变成"浮窗没反应"的谜案
+            self.v_status.set(f"浮窗创建失败：{type(e).__name__}: {e}")
+            self.overlay = None
+            return
         self.b_overlay.configure(text="关闭字幕浮窗")
         for l in self._recent_lines[-3:]:             # 把最近几句先填进去
             self.overlay.add(l.get("src", ""), l.get("tgt") or "…")
@@ -721,8 +726,12 @@ class SubtitleOverlay:
             tgt.bind("<B1-Motion>", self._drag_move)
 
         # 右下角缩放把手：无边框窗口没有系统边框，只能自己做一个
-        self.grip = tk.Label(self.panel, text="◢", bg="#0b0d12", fg="#4b5563",
-                             cursor="size_nw_se", font=(UI_FONT, 11))
+        # ⚠️ macOS 不认 cursor="size_nw_se"（会抛 TclError，进而让浮窗初始化半路中断、永远吃不到字幕）
+        _grip_args = dict(text="◢", bg="#0b0d12", fg="#4b5563", font=(UI_FONT, 11))
+        try:
+            self.grip = tk.Label(self.panel, cursor="size_nw_se", **_grip_args)
+        except tk.TclError:
+            self.grip = tk.Label(self.panel, cursor="crosshair", **_grip_args)
         self.grip.place(relx=1.0, rely=1.0, anchor="se")
         self.grip.bind("<Button-1>", self._resize_start)
         self.grip.bind("<B1-Motion>", self._resize_move)
