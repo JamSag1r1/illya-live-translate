@@ -149,8 +149,8 @@ python live_gui.py
 - **抓系统声音**（默认）：扬声器里放什么就翻什么。浏览器放直播即可，别静音。
 - **抓直播间网址**：`--url https://live.bilibili.com/<房间号>`，只抓这一路——你可以同时听别的音乐，甚至把网页静音。断流会自动重连。
 - **YouTube 直播**：把 `https://www.youtube.com/live/...`（或 `youtu.be` 短链）填进同一个格子 / `--url` 就行。
-  ⚠️ **国内必须先开代理**（程序自动读环境变量 `HTTPS_PROXY`，或者你在系统里开全局/TUN）；
-  代理开着时建议用「规则模式」——YouTube 走代理、B 站直连，这样两个平台能同时用。
+  ⚠️ **国内必须先开代理**：程序会**自己找到你的系统代理**（Windows 上直接读系统设置，双击 exe 也能用 ✓），
+  用全局/TUN 模式的话更不用管。代理开着时建议用「规则模式」——YouTube 走代理、B 站直连，这样两个平台能同时用。
   YouTube 常改规则，哪天报错先升级：`pip install -U yt-dlp`。
 
 翻译后端用 `--translator api|local|ollama` 切换；云端需要在界面里填一次 API Key（或设环境变量 `DEEPSEEK_API_KEY`、或放一个 `api_key.txt`）。
