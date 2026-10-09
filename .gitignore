@@ -1,0 +1,39 @@
+# ── 本机/环境相关，绝不进仓库 ──
+.venv/
+__pycache__/
+*.pyc
+build_tmp/
+*.spec
+
+# ── 模型权重（几个 GB，放 Release 或本地下载，不进 git）──
+models/
+*.bin
+*.bin.part
+*.onnx
+faster-whisper-*/
+*-ct2/
+nllb-600M-hf/
+
+# ── 打包产物（2.5G+ / 2.4G 的 exe 与便携包）──
+live-translate-gui/
+_pkg/
+*.zip
+ffmpeg.exe
+
+# ── 密钥与个人设置（明文 key，务必忽略）──
+gui_settings.json
+!gui_settings.example.json
+api_key.txt
+.env
+.env.*
+!.env.example
+
+# ── 运行记录（含看过的直播内容）──
+logs/
+*.jsonl
+
+# ── 编辑器/系统 ──
+.vscode/
+.idea/
+Thumbs.db
+desktop.ini

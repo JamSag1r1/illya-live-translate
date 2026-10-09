@@ -1,0 +1,5 @@
+# GPU 加速（可选，NVIDIA 显卡）
+# 装完这两个，faster-whisper 会自动用 CUDA 跑（代码里会 os.add_dll_directory 注入 DLL 目录）
+#   uv pip install -r requirements-cuda.txt
+nvidia-cublas-cu12
+nvidia-cudnn-cu12>=9,<10

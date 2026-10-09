@@ -1,0 +1,19 @@
+{
+  "src": "ja",
+  "model": "small",
+  "device": "auto",
+  "silence": 0.45,
+  "merge_below": 1.6,
+  "max_seg": 6.0,
+  "prompt_name": "不填（通用闲聊）",
+  "prompt_custom": "",
+  "port": 8777,
+  "show_page": true,
+  "source": "抓系统声音（扬声器里放什么就翻什么）",
+  "url": "",
+  "api_key": "",
+  "console": false,
+  "trans_mode": "本地模型",
+  "local_mt": "NLLB-200 日→中",
+  "font_size": 22
+}
