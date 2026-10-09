@@ -98,12 +98,6 @@ git config --global http.proxy http://127.0.0.1:7890     # 端口按你 Mac 上�
 **④ 浮窗拖右下角 `◢` 不能改大小**
 用浮窗顶部那排按钮：`宽 −` `宽 ＋` `高 −` `高 ＋`（字号同理用 `字号 −` `字号 ＋`）。
 
-**⑤ 以前 clone 过，`git pull` 提示 diverged / non-fast-forward**
-说明远端历史动过（本地没改过源码再这么处理）。对齐一次即可，以后 `pull` 正常：
-```bash
-git fetch origin && git reset --hard origin/main
-```
-
 ## 更新记录
 
 - **2026-10-09**　macOS 支持完成：
