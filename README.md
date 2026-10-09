@@ -5,15 +5,11 @@
 
 ## 下载就能用（预编译包）
 
-> **预编译的安装包（约 1.9 GB，内含离线翻译模型）目前还没上传**，之后会放到 Releases / 网盘。
-> 现在仓库里只有源码，会 Python 的可以照下面「开发 / 自己跑源码」自己跑起来。
+**[➜ 点这里去 Releases 下载](../../releases/latest)** —— 约 **2.0 GB**，内含离线翻译模型，解压即用。
 
-等到安装包上传后，用户只需：
-
-1. 打开本仓库的 **[Releases](../../releases)** 页面
-2. 下载 `Illya-live-translate-tools-vX.X.zip`
-3. 解压到任意目录（例如 `D:\IllyaTranslate`）——**注意保持 `live-translate-gui\` 和 `models\` 两个文件夹同级**
-4. 双击 `live-translate-gui\live-translate-gui.exe`，选好参数，点「▶ 开始翻译」
+1. 下载 `Illya-live-translate-tools-vX.X.zip`
+2. 解压到任意目录（例如 `D:\IllyaTranslate`）——**保持 `live-translate-gui\` 和 `models\` 两个文件夹同级**
+3. 双击 `live-translate-gui\live-translate-gui.exe` → 选好参数 → 点「▶ 开始翻译」
 
 - **默认离线可用**：本地翻译模型已经随包自带，断网也能出中文字幕
 - 第一次选某个识别模型时，程序会弹窗告诉你多大、要不要下载（`small` 约 460 MB，从魔搭 ModelScope 下，下过一次就不再下）
