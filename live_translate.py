@@ -84,7 +84,12 @@ def rms(x: np.ndarray) -> float:
 
 def enable_cuda_dlls() -> int:
     """把 pip 装的 nvidia-*-cu12 里的 bin 目录加进 DLL 搜索路径。
-    ctranslate2 用 CUDA 时找不到 cublas64_12.dll / cudnn_ops64_9.dll 就是这个原因。"""
+    ctranslate2 用 CUDA 时找不到 cublas64_12.dll / cudnn_ops64_9.dll 就是这个原因。
+
+    Windows 专属（os.add_dll_directory）；macOS/Linux 上直接返回 0 不做事。
+    """
+    if os.name != "nt":
+        return 0
     import glob
     import sysconfig
     roots = []
@@ -518,6 +523,13 @@ def main():
                     help="auto=有 N 卡就用 GPU（float16，快 10 倍以上）")
     ap.add_argument("--compute-type", default=None, help="覆盖精度，如 int8_float16 / float16")
     ap.add_argument("--list-devices", action="store_true")
+    ap.add_argument("--input-device", default=None, metavar="SPEC",
+                    help="从音频输入设备抓音（跨平台）。macOS: \":<序号>\"（BlackHole）; "
+                         "Windows: \"audio=<设备名>\"; Linux: \"default\"")
+    ap.add_argument("--input-format", default=None, metavar="FMT",
+                    help="ffmpeg 输入格式：默认 macOS=avfoundation / Windows=dshow / Linux=pulse")
+    ap.add_argument("--list-input-devices", action="store_true",
+                    help="列出能抓的音频输入设备（和该填的参数）")
     ap.add_argument("--level", action="store_true", help="只看音量（调阈值用）")
     ap.add_argument("--stop-file", default=None, metavar="PATH",
                     help="这个文件一出现就优雅退出（GUI 的「停止」用的就是它，比 CTRL_BREAK 干净）")
@@ -525,6 +537,10 @@ def main():
                     help="跑够这么多秒自动停（测试用，默认一直跑）")
     args = ap.parse_args()
 
+    if args.list_input_devices:
+        from stream_source import list_input_devices
+        print(list_input_devices(args.input_format))
+        return
     if args.list_devices:
         list_devices(); return
     if args.level:
@@ -572,7 +588,17 @@ def main():
     else:
         translator = Translator(enabled=True)
 
-    cap = LoopbackCapture(args.loopback) if not (args.url or args.source == "url") else None
+    cap = None
+    if args.input_device:
+        from stream_source import DeviceCapture   # 从音频输入设备抓（macOS: BlackHole / Windows: dshow）
+        cap = DeviceCapture(args.input_device, args.input_format)
+    elif not (args.url or args.source == "url"):
+        if os.name != "nt":
+            print("[x] 这台系统没有 WASAPI 环回可抓：请用 --url 抓直播间，"
+                  "或用 --input-device 指定录音设备（macOS 先装 BlackHole，"
+                  "再用 --list-input-devices 看序号）")
+            return
+        cap = LoopbackCapture(args.loopback)
     if cap is None:
         if not args.url:
             print("[x] --source url 要同时给 --url，例如 --url https://live.bilibili.com/22105860")

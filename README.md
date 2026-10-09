@@ -92,7 +92,8 @@ docs/DEV-NOTES.md     开发笔记：踩过的所有坑、实测数据、打包�
 ## 已知限制
 
 - 本地 NLLB-600M 翻译**质量明显不行**（口语、人名、梗全翻错，只够听懂大意）；要离线的同时还要质量，请用 Ollama 路线，或者换更大的 NLLB（1.3B/3.3B，转换流程一样）
-- 只有在 Windows 上做完整验证（WASAPI 环回录音是 Windows API；Linux/macOS 需要替换录音部分）
+- **Windows 上功能最全**（WASAPI 环回 = 抓系统声音）。**macOS 也能跑**：抓直播间 / 装 BlackHole 后抓系统声音，
+  见 [docs/MACOS.md](docs/MACOS.md)；Linux 同理（ffmpeg pulse 抓音）
 - 直播没有字幕流也没关系（本来就是纯音频识别），但主播语速极快、多人抢话时效果会掉
 
 ## 授权与声明

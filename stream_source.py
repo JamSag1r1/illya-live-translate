@@ -41,14 +41,52 @@ def _find_up(name: str) -> Path | None:
 
 
 def ffmpeg_path() -> str:
-    """优先用随身带的 ffmpeg.exe（便携包就靠它），找不到才用 PATH 里的"""
+    """优先用随身带的 ffmpeg.exe（便携包就靠它），找不到才用 PATH 里的。
+
+    macOS/Linux 上不叫 ffmpeg.exe，所以两种名字都试；PATH 里没有就报清楚。
+    """
+    import shutil
     env = os.environ.get("LIVE_TRANSLATE_FFMPEG", "").strip()
     cands = [Path(env)] if env else []
-    cands += [_find_up("ffmpeg.exe"), HERE / "tools" / "ffmpeg.exe"]
+    for name in ("ffmpeg.exe", "ffmpeg"):
+        cands.append(_find_up(name))
+        cands.append(HERE / "tools" / name)
     for c in cands:
         if c and c.is_file():
             return str(c)
-    return "ffmpeg"
+    found = shutil.which("ffmpeg")
+    if found:
+        return found
+    raise RuntimeError("没找到 ffmpeg：装一个（macOS: brew install ffmpeg）或放进程序目录，"
+                       "也可以设环境变量 LIVE_TRANSLATE_FFMPEG 指向它")
+
+
+# ── 音频输入设备（跨平台）：macOS 用 avfoundation，Windows 用 dshow，Linux 用 pulse ──
+def default_input_format() -> str:
+    if sys.platform == "darwin":
+        return "avfoundation"
+    if os.name == "nt":
+        return "dshow"
+    return "pulse"
+
+
+def list_input_devices(fmt: str | None = None) -> str:
+    """打印当前平台能抓的音频设备，并把建议的参数拼出来（macOS 上要用到那个序号）"""
+    fmt = (fmt or default_input_format()).lower()
+    ff = ffmpeg_path()
+    print(f"音频输入格式：{fmt}   （ffmpeg: {ff}）")
+    if fmt == "avfoundation":
+        print("── ffmpeg 认到的设备列表（音频设备的序号看 \"[N] 名字\" 里的 N）──")
+        subprocess.run([ff, "-hide_banner", "-f", "avfoundation", "-list_devices", "true", "-i", ""],
+                       stderr=subprocess.STDOUT)
+        return "装好 BlackHole 后，用  --input-device \":<音频序号>\"  例如 --input-device \":1\""
+    if fmt == "dshow":
+        subprocess.run([ff, "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy"],
+                       stderr=subprocess.STDOUT)
+        return "用  --input-device \"audio=<名字>\""
+    # pulse / alsa
+    print("（pulse/alsa 不给列表的话，用 `pactl list short sources` 看设备名）")
+    return "用  --input-device \"<设备名>\"（例如 default 或 <sink>.monitor）"
 
 
 def _api(url: str, referer: str | None = None, timeout: int = 25) -> dict:
@@ -184,8 +222,8 @@ class StreamCapture:
                 return
             print(f"[stream] 流断了，1.5 s 后重连（第 {fails} 次）… {err.strip()[:100]}")
             time.sleep(1.5)
-            try:                                      # 重新解析（B 站地址会过期）
-                self.url, self.headers = resolve(self.url_arg)
+            try:                                      # 重新解析（B 站地址会过期；设备抓音不用）
+                self._reresolve()
             except Exception as e:
                 print(f"[stream] 重解析失败：{e}")
             try:
@@ -194,6 +232,10 @@ class StreamCapture:
                 self.dead = True
                 print(f"[stream] 重启 ffmpeg 失败：{e}")
                 return
+
+    def _reresolve(self):
+        """直播地址会过期，重连前重新解析一次"""
+        self.url, self.headers = resolve(self.url_arg)
 
     def start(self):
         self._spawn()
@@ -208,3 +250,41 @@ class StreamCapture:
                 self._proc.kill()
         except Exception:
             pass
+
+
+class DeviceCapture(StreamCapture):
+    """用 ffmpeg 从音频输入设备抓音（跨平台）。
+
+    macOS：装 BlackHole 2ch，把系统输出送到它，然后  --input-device ":<音频序号>"
+           （序号用  --list-input-devices  看；avfoundation 的写法是 "<视频>:<音频>"，
+             只抓音频就留空视频，例如 ":1"）
+    Windows：--input-device "audio=<设备名>"（dshow）
+    Linux：  --input-device "default"（pulse）
+
+    走的是和 StreamCapture 同一条 ffmpeg → 16k 单声道 int16 的管道，所以接口完全一致。
+    """
+
+    def __init__(self, spec: str, fmt: str | None = None, verbose: bool = True, retries: int = 5):
+        self.spec = spec
+        self.fmt = (fmt or default_input_format()).lower()
+        self.rate, self.channels = SR, 1
+        self.q: queue.Queue[np.ndarray] = queue.Queue(maxsize=400)
+        self.dead = False
+        self.info = {"name": f"{self.fmt}:{spec}"}
+        self._proc: subprocess.Popen | None = None
+        self._stop = threading.Event()
+        self._retries = retries
+        self.url_arg, self.url, self.headers = spec, spec, {}
+        if verbose:
+            print(f"[device] 从音频设备抓音：-f {self.fmt} -i {spec}")
+
+    def _spawn(self):
+        cmd = [ffmpeg_path(), "-hide_banner", "-loglevel", "error",
+               "-f", self.fmt, "-i", self.spec,
+               "-vn", "-ac", "1", "-ar", str(SR), "-f", "s16le", "-"]
+        flags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
+        self._proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                      bufsize=0, creationflags=flags)
+
+    def _reresolve(self):
+        pass                                          # 设备不用重新解析，重开 ffmpeg 就行

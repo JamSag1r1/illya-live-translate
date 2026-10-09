@@ -33,7 +33,7 @@ STOP_FILE = HERE / "logs" / "STOP.signal"
 if "--run-cli" in sys.argv:
     _want_console = "--console" in sys.argv
     sys.argv = [a for a in sys.argv if a not in ("--run-cli", "--console")]
-    if _want_console:
+    if _want_console and os.name == "nt":      # AllocConsole 是 Windows 专属
         try:                                   # 勾了「显示运行日志」：输出打到控制台
             import ctypes
             ok = bool(ctypes.windll.kernel32.AllocConsole())
@@ -142,6 +142,7 @@ DEFAULTS = {
 }
 SOURCE_LOOPBACK = "抓系统声音（扬声器里放什么就翻什么）"
 SOURCE_URL = "抓直播间网址（只抓这一路，不影响你听别的）"
+SOURCE_DEVICE = "抓音频输入设备（macOS 用 BlackHole）"
 
 
 def load_settings() -> dict:
@@ -199,11 +200,16 @@ class App:
                         variable=self.v_source).pack(side="left")
         ttk.Radiobutton(fr, text="抓直播间网址", value=SOURCE_URL,
                         variable=self.v_source).pack(side="left", padx=(10, 0))
+        if os.name != "nt":                      # WASAPI 环回只有 Windows 有
+            ttk.Radiobutton(fr, text="抓音频输入设备", value=SOURCE_DEVICE,
+                            variable=self.v_source).pack(side="left", padx=(10, 0))
         row("声音来源", fr,
             "选「网址」可以静音、可以同时听其他音频，不干扰翻译")
         self.v_url = tk.StringVar(value=self.s.get("url", ""))
         row("直播间网址/房间号", ttk.Entry(box, textvariable=self.v_url, width=46),
             "选抓网址需填写直播间网址，如：https://live.bilibili.com/***")
+        self.v_inputdev = tk.StringVar(value=self.s.get("input_device", ""))
+        row("输入设备", ttk.Entry(box, textvariable=self.v_inputdev, width=22))
         self.v_model = tk.StringVar(value=self.s["model"])
         row("识别模型", ttk.Combobox(box, textvariable=self.v_model, values=MODELS, width=14,
                                   state="readonly"), "large-v3 最准（需 N 卡）")
@@ -306,6 +312,7 @@ class App:
         # 记忆：任何一处改动都延迟 1 秒写进 gui_settings.json，下次打开原样恢复
         self._save_job = None
         for var in (self.v_src, self.v_model, self.v_device, self.v_source, self.v_url,
+                    self.v_inputdev,
                     self.v_transmode, self.v_localmt, self.v_console, self.v_page,
                     self.v_port, self.v_silence, self.v_merge, self.v_maxseg, self.v_font,
                     self.v_prompt, self.v_custom, self.v_key):
@@ -361,6 +368,12 @@ class App:
             if not url:
                 raise ValueError("选了「抓直播间网址」，但网址那一格是空的")
             a = ["--url", url] + a
+        elif self.v_source.get() == SOURCE_DEVICE:
+            spec = self.v_inputdev.get().strip()
+            if not spec:
+                raise ValueError("选了「抓音频输入设备」，但设备那一格是空的"
+                                 "（macOS: 先 `python live_translate.py --list-input-devices` 看序号）")
+            a = ["--input-device", spec] + a
         return a
 
     def _cmd_prefix(self) -> list[str]:
@@ -595,6 +608,7 @@ class App:
                 "console": bool(self.v_console.get()),
                 "trans_mode": self.v_transmode.get(),
                 "local_mt": self.v_localmt.get(),
+                "input_device": self.v_inputdev.get().strip(),
                 "overlay_show_src": bool(self.s.get("overlay_show_src", False)),
                 "overlay_geometry": self.s.get("overlay_geometry")}
 
