@@ -31,8 +31,13 @@ git clone https://github.com/JamSag1r1/illya-live-translate.git
 cd illya-live-translate
 bash setup_mac.sh
 
-# 3) 跑起来（抓直播间，不需要虚拟声卡）
-./.venv/bin/python live_translate.py --url https://live.bilibili.com/<房间号> \
+# 3) 运行程序
+有两种（推荐第一种）
+a.
+cd ~/illya-live-translate
+conda activate livetrans && python live_gui.py
+b.如果你会一定计算机的话可以用这种
+./.venv/bin/python live_translate.py --url 直播间网址 \
     --src ja --device cpu --model-size small
 # 大字幕：浏览器打开 http://127.0.0.1:8777
 # 图形界面：./.venv/bin/python live_gui.py
@@ -40,7 +45,7 @@ bash setup_mac.sh
 
 - **识别模型**：第一次运行会问你要不要下载（`small` 约 460 MB，从魔搭 ModelScope 下，国内可直连）
 - **想离线翻译**：把 Windows 机器上的 `models/nllb-200-distilled-600M-ct2`（约 620 MB）拷进 `models/` 即可
-- **想抓"系统声音"**（正在放的直播/视频/音乐，不只是直播间链接）：装个虚拟声卡就行
+- **想抓"系统声音"**（正在放的直播/视频/音乐，不只是直播间链接，一般用不上）：
   1. **装 BlackHole 2ch**：`brew install blackhole-2ch`；Homebrew 用不了就去官网下 `.pkg` 安装包
      <https://existential.audio/blackhole/>（双击安装，会问系统密码）
   2. 打开「**音频 MIDI 设置**」→ 左下角「**+**」→ **创建多输出设备** → 勾上你的「扬声器」**和**「BlackHole 2ch」；
