@@ -58,30 +58,37 @@ python3.12 -m venv .venv
 
 ### B. 抓系统声音（BlackHole）
 
-1. 装 BlackHole：`brew install blackhole-2ch`（或官网下载安装）
-2. 打开「音频 MIDI 设置」→ 左下角「+」→ **创建多输出设备** → 勾上你的扬声器 **和** BlackHole 2ch
+1. 装 BlackHole 虚拟声卡（它把系统输出复制一路给程序录）：
+   - 有能用 Homebrew 的话：`brew install blackhole-2ch`
+   - **Homebrew 不可用**（比如报 `unknown or unsupported macOS version`）→ 去官网下 `.pkg` 安装包：
+     <https://existential.audio/blackhole/>（选 **BlackHole 2ch**，双击安装，会问系统密码）
+2. 打开「音频 MIDI 设置」→ 左下角「**+**」→ **创建多输出设备** → 勾上你的扬声器 **和** BlackHole 2ch
    （这样你还能听见声音，同时程序也能收到）
 3. 系统输出切到这个多输出设备
 4. 看 ffmpeg 认到的音频设备序号：
-
    ```bash
    ./.venv/bin/python live_translate.py --list-input-devices
    ```
-
-   输出里音频设备长这样（序号就是中括号里的数字）：
+   输出里分两段，**看 `AVFoundation audio devices` 那一段**（视频段跳过），序号是中括号里的数字：
    ```
+   AVFoundation video devices:
+   [0] FaceTime HD Camera
+   AVFoundation audio devices:
    [1] BlackHole 2ch
+   [2] MacBook Pro Microphone
    ```
-5. 跑（avfoundation 的写法是 `<视频>:<音频>`，不抓视频就留空）：
-
+   ⚠️ 序号按**你自己机器上打出来的**填，别照抄上面的例子（你那儿 BlackHole 可能是 2、3…）
+5. 跑（avfoundation 的写法是 `<视频>:<音频>`，不抓视频就留空，所以是 `:<音频序号>`）：
    ```bash
    ./.venv/bin/python live_translate.py --input-device ":1" \
        --src ja --device cpu --model-size small
    ```
+   图形界面里则是：声音来源选「抓音频输入设备」，「输入设备」那一格填 `:1`。
 
-   图形界面里选「抓音频输入设备」，设备那一格填 `:1`。
+> **想先确认这条链路通不通**：`--list-input-devices` 里找到你**内置麦克风**的序号（上面例子里是 `[2]`），
+> 直接 `--input-device ":2"` 跑，对着电脑说句话，能看到字幕就说明抓音这条链通了，再去折腾 BlackHole。
 
-> macOS 会问"要不要允许终端/程序访问麦克风"——**要点允许**（BlackHole 是通过录音通道进来的）。
+> macOS 会问"要不要允许终端/程序访问麦克风"——**要点允许**（BlackHole 也是通过录音通道进来的）。
 
 ## 性能预期（CPU）
 
