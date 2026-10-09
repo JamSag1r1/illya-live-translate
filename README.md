@@ -18,6 +18,34 @@
 
 > 中国大陆从 GitHub 下载大文件可能很慢；如果 Releases 打不开，用网盘备用链接：**<待补>**
 
+## macOS 上怎么装（Mac 用户看这里）
+
+上面那个预编译 zip 是 **Windows 专用**（里面的 `.exe` 在 Mac 上跑不了）。Mac 上走源码，三步：
+
+```bash
+# 1) 依赖（Homebrew 没装的话先看 https://brew.sh）
+brew install python@3.12 python-tk@3.12 ffmpeg
+
+# 2) 拉代码 + 建环境（一键脚本，会自动装依赖并检查 tkinter / ffmpeg）
+git clone https://github.com/JamSag1r1/illya-live-translate.git
+cd illya-live-translate
+bash setup_mac.sh
+
+# 3) 跑起来（抓直播间，不需要虚拟声卡）
+./.venv/bin/python live_translate.py --url https://live.bilibili.com/<房间号> \
+    --src ja --device cpu --model-size small
+# 大字幕：浏览器打开 http://127.0.0.1:8777
+# 图形界面：./.venv/bin/python live_gui.py
+```
+
+- **识别模型**：第一次运行会问你要不要下载（`small` 约 460 MB，从魔搭 ModelScope 下，国内可直连）
+- **想离线翻译**：把 Windows 机器上的 `models/nllb-200-distilled-600M-ct2`（约 620 MB）拷进 `models/` 即可
+- **想抓"系统声音"**（不只是直播间）：装 BlackHole 虚拟声卡，再用 `--input-device ":<序号>"`
+  （序号用 `./.venv/bin/python live_translate.py --list-input-devices` 看）——完整步骤见
+  **[docs/MACOS.md](docs/MACOS.md)**
+- Mac 上没有 NVIDIA 卡（CTranslate2 也没有 Metal 后端），识别模型建议 `small` / `medium`；
+  `large-v3` 在 CPU 上跟不上直播
+
 ## 开发 / 自己跑源码
 
 给没有字幕的直播/视频做实时中文字幕：日语、英语、韩语 → 中文，延迟约 2 秒。
