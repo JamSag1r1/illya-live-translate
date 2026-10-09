@@ -54,8 +54,16 @@ def main():
     ap.add_argument("--with-model", action="store_true",
                     help="把 models/nllb-200-distilled-600M-ct2 也塞进包（离线翻译用）")
     ap.add_argument("--out", default=str(HERE / "Illya-live-translate-tools-portable.zip"))
+    ap.add_argument("--out-dir", default=None,
+                    help="打包产物（exe 目录 / 临时目录 / 组装目录）放哪，默认项目根目录。"
+                         "想不打扰正在用的那份就指到别处（例如 E:/Github/build-out）")
+    ap.add_argument("--skip-build", action="store_true",
+                    help="跳过 PyInstaller，直接用 --out-dir 里已有的 exe 重新组装 + 压缩（改了组装逻辑时省时间）")
     a = ap.parse_args()
     dry = a.dry_run
+    OUTD = Path(a.out_dir).resolve() if a.out_dir else HERE
+    if not dry:
+        OUTD.mkdir(parents=True, exist_ok=True)
 
     print("== 0/4 环境检查 ==")
     try:
@@ -73,28 +81,37 @@ def main():
         return 1
 
     print("== 1/4 PyInstaller 打 exe（约 3-5 分钟）==")
-    # nvidia 的 DLL 从"当前解释器的 site-packages"里找（别写死 .venv 路径，换个目录跑就对不上）
-    import sysconfig
-    nvidia = Path(sysconfig.get_paths()["purelib"]) / "nvidia"
-    args = [PY, "-m", "PyInstaller", *PYINSTALLER_ARGS]
-    if nvidia.is_dir():
-        args += ["--add-data", f"{nvidia};nvidia"]
+    if a.skip_build:
+        print("  （--skip-build：用 --out-dir 里已有的 exe，不重打）")
+        args = None
     else:
-        print(f"  [i] 没找到 {nvidia}（没装 nvidia-cublas/cudnn 就是纯 CPU 版，正常）")
-    args += ["--distpath", str(HERE), "--workpath", str(HERE / "build_tmp"),
-             "--specpath", str(HERE / "build_tmp"), "--paths", str(HERE / "tools"),
-             "--paths", str(HERE), "live_gui.py"]
-    if run(args, dry, cwd=str(HERE)) not in (0, None) and not dry:
-        print("[x] PyInstaller 失败，把上面的输出发出来")
-        return 1
+        # nvidia 的 DLL 从"当前解释器的 site-packages"里找（别写死 .venv 路径，换个目录跑就对不上）
+        import sysconfig
+        nvidia = Path(sysconfig.get_paths()["purelib"]) / "nvidia"
+        args = [PY, "-m", "PyInstaller", *PYINSTALLER_ARGS]
+        if nvidia.is_dir():
+            args += ["--add-data", f"{nvidia};nvidia"]
+        else:
+            print(f"  [i] 没找到 {nvidia}（没装 nvidia-cublas/cudnn 就是纯 CPU 版，正常）")
+        args += ["--distpath", str(OUTD), "--workpath", str(OUTD / "build_tmp"),
+                 "--specpath", str(OUTD / "build_tmp"), "--paths", str(HERE / "tools"),
+                 "--paths", str(HERE), "live_gui.py"]
+        if run(args, dry, cwd=str(HERE)) not in (0, None) and not dry:
+            print("[x] PyInstaller 失败，把上面的输出发出来")
+            return 1
 
     print("== 2/4 组装目录（exe + ffmpeg.exe + 模型）==")
-    stage = HERE / "_pkg" / PKG_ROOT
+    stage = OUTD / "_pkg" / PKG_ROOT
+    # 新打出来的 exe 在 OUTD（--distpath）；**别去拷项目根目录里那份同名旧文件夹**——
+    # 踩过这个坑：包里装的是上一版 exe，功能怎么改都不生效，还查半天。
+    src_dist = (OUTD / DIST) if (OUTD / DIST).is_dir() else (HERE / DIST)
     if not dry:
-        shutil.rmtree(HERE / "_pkg", ignore_errors=True)
+        shutil.rmtree(OUTD / "_pkg", ignore_errors=True)
         (stage / "models").mkdir(parents=True, exist_ok=True)
-        shutil.copytree(HERE / DIST, stage / DIST)
-        shutil.rmtree(stage / DIST / "logs", ignore_errors=True)
+        print(f"  从 {src_dist} 取 exe")
+        shutil.copytree(src_dist, stage / DIST)
+        for junkdir in ("logs", "models"):      # 跑测试留下的东西绝不能进包
+            shutil.rmtree(stage / DIST / junkdir, ignore_errors=True)
         shutil.copy2(HERE / "ffmpeg.exe", stage / DIST / "ffmpeg.exe")
         for extra in ("README-portable.txt",):
             if (HERE / extra).exists():
@@ -103,11 +120,21 @@ def main():
             src = HERE / "models" / "nllb-200-distilled-600M-ct2"
             if src.is_dir():
                 shutil.copytree(src, stage / "models" / src.name)
-                print(f"  + 模型 {src.name}")
+                # tokenizer.json 是 HF 格式的产物，运行端只用 sentencepiece.bpe.model +
+                # shared_vocabulary.json，删掉能省 17 MB（体积一直顶着 GitHub 的 2 GiB 上限）
+                (stage / "models" / src.name / "tokenizer.json").unlink(missing_ok=True)
+                print(f"  + 模型 {src.name}（已去掉 tokenizer.json）")
             else:
                 print(f"  [!] 没找到 {src}，跳过模型")
         else:
             print("  （没带本地翻译模型：--with-model 才会带）")
+
+        # 再清掉一批确定用不上的东西（省体积；顶到 GitHub 单附件 2 GiB 上限时这些就是关键）
+        for junk in (stage / DIST / "_internal" / "hf_xet",          # HF 的下载加速器，我们用魔搭
+                     stage / DIST / "_internal" / "nvidia" / "cuda_nvrtc"):  # 推理不需要 NVRTC
+            if junk.exists():
+                shutil.rmtree(junk, ignore_errors=True)
+                print(f"  - 去掉 {junk.name}")
 
     print("== 3/4 清掉包内 key ==")
     settings = stage / DIST / "gui_settings.json"
@@ -125,14 +152,15 @@ def main():
 
     print("== 4/4 压成 zip ==")
     run([PY, str(HERE / "tools" / "make_portable_zip.py"),
-         "--src", str(HERE / "_pkg"), "--out", a.out], dry, cwd=str(HERE))
+         "--src", str(OUTD / "_pkg"), "--out", a.out], dry, cwd=str(HERE))
 
     if not dry:
         z = Path(a.out)
         if z.is_file():
-            size_gib = z.stat().st_size / 2 ** 30
-            flag = "✓ 在 GitHub 单附件上限（2 GiB）之内" if size_gib < 2 else "✗ 超过 2 GiB，得再瘦身"
-            print(f"\n[ok] {z}  {size_gib:.2f} GiB  {flag}")
+            n = z.stat().st_size
+            size_gib = n / 2 ** 30
+            flag = "✓ 在 GitHub 单附件上限（2 GiB）之内" if n < 2147483648 else "✗ 超过 2 GiB，得再瘦身"
+            print(f"\n[ok] {z}\n     {n} 字节 = {size_gib:.3f} GiB（上限 2,147,483,648）  {flag}")
             print("\n下一步（发新版）：")
             print(f'  gh release create vX.Y.Z --repo <owner>/<repo> --title "..." --notes-file <说明.md> \\')
             print(f'      --target main --latest "{z}"')
