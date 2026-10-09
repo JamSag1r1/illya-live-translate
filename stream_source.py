@@ -3,6 +3,7 @@
 
 目前支持：
   · B 站直播间（房间号或 live.bilibili.com 链接）——走官方 getRoomPlayInfo 拿 FLV/HLS 地址
+  · YouTube 直播/视频（youtube.com / youtu.be）——用 yt-dlp 换出音频直链（**国内必须开代理**）
   · 任何 ffmpeg 能打开的媒体地址（m3u8 / flv / http 直链…）
 
 对外接口和 live_translate.LoopbackCapture 一致：rate / channels / q / start() / stop() / dead
@@ -150,8 +151,55 @@ def resolve_bilibili_audio(text: str) -> tuple[str, dict]:
     return cands[0][1], {"Referer": ref, "User-Agent": UA}
 
 
+def _proxy_from_env() -> str | None:
+    """代理地址从环境变量读（用户开了系统级代理/TUN 就不用管这个）"""
+    for k in ("HTTPS_PROXY", "https_proxy", "HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"):
+        if os.environ.get(k):
+            return os.environ[k]
+    return None
+
+
+def resolve_youtube(text: str) -> tuple[str, dict]:
+    """YouTube 直播/视频 → 音频直链（用 yt-dlp 自己的 Python API，不调外部命令，方便打进 exe）
+
+    国内看不了 YouTube，所以要开代理；直链会过期，断流时 StreamCapture 会自动再调一次本函数。
+    """
+    try:
+        import yt_dlp
+    except ImportError as e:
+        raise RuntimeError("没装 yt-dlp（换 YouTube 直链要用它）：pip install yt-dlp") from e
+    opts = {"quiet": True, "no_warnings": True, "skip_download": True, "noplaylist": True,
+            "format": "bestaudio/best", "socket_timeout": 20, "retries": 2,
+            "extractor_retries": 2, "nocheckcertificate": True}
+    proxy = _proxy_from_env()
+    if proxy:
+        opts["proxy"] = proxy
+    try:
+        with yt_dlp.YoutubeDL(opts) as ydl:
+            info = ydl.extract_info(text, download=False)
+    except Exception as e:
+        raise RuntimeError(
+            "连不上 YouTube（国内必须开代理：给程序设 HTTPS_PROXY=http://127.0.0.1:7890 一样的东西，"
+            "或在系统里开全局/TUN）。另外 YouTube 常改规则，yt-dlp 太旧也会失败（升级：pip install -U yt-dlp）。"
+            f"原始错误：{type(e).__name__}: {e}") from e
+    if info.get("_type") == "playlist":                    # 频道/合集链接：只取第一个
+        info = (info.get("entries") or [None])[0] or info
+    url = info.get("url") or info.get("manifest_url")
+    if not url:
+        fmts = info.get("formats") or []
+        url = (fmts[-1] or {}).get("url") if fmts else None
+    if not url:
+        raise RuntimeError("yt-dlp 拿到了信息但没有可用的音频地址（直播没开始 / 会员限定 / 地区限制）")
+    headers = dict(info.get("http_headers") or {})
+    headers.setdefault("User-Agent", UA)
+    return url, headers
+
+
 def resolve(url: str) -> tuple[str, dict]:
     """任意地址 → (ffmpeg 地址, headers)"""
+    u = url.lower()
+    if "youtube.com" in u or "youtu.be" in u:
+        return resolve_youtube(url)
     if bilibili_room_id(url) and ("bilibili" in url or re.fullmatch(r"\d{2,10}", url.strip())):
         return resolve_bilibili_audio(url)
     return url, {"User-Agent": UA}

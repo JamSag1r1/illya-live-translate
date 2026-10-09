@@ -4,4 +4,5 @@ ctranslate2>=4.5
 numpy
 pyaudiowpatch>=0.2.12; sys_platform == "win32"   # 只有 Windows 需要（WASAPI 环回录音）
 requests
+yt-dlp                                          # 想抓 YouTube 直播才需要（国内要开代理）
 sentencepiece              # 本地 NLLB 翻译用

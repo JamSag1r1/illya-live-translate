@@ -33,7 +33,7 @@ PYINSTALLER_ARGS = [
     "--collect-all", "ctranslate2", "--collect-all", "faster_whisper",
     "--collect-all", "onnxruntime", "--collect-all", "tokenizers",
     "--collect-all", "av", "--collect-all", "pyaudiowpatch",
-    "--collect-all", "sentencepiece",
+    "--collect-all", "sentencepiece", "--collect-all", "yt_dlp",
     # 这两个是 ctranslate2 转换模型时才用的，运行端不需要，带上会白胖 600 MB
     "--exclude-module", "torch", "--exclude-module", "transformers",
     "--exclude-module", "tensorflow", "--exclude-module", "sympy",

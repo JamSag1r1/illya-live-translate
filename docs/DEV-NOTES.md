@@ -114,6 +114,15 @@ VRAM 占用 5.6 GB / 12 GB。现在瓶颈已经不是识别，而是"等一句�
 自动重连：B 站的流地址会过期/断流，脚本会**每隔 1.5 秒重新解析地址并重启 ffmpeg**，最多 10 次；连续失败才报
 `[capture] 拉流已断开` 并收尾退出。房间没开播时会直接说「房间 xxx 现在没有开播」。
 
+## YouTube 直播（2026-10 加）
+
+- **用 yt-dlp 的 Python API**（`yt_dlp.YoutubeDL(opts).extract_info(url, download=False)`），不调外部命令——这样 PyInstaller 靠 `--collect-all yt_dlp` 就能一起打进 exe，用户不用另装 yt-dlp。
+- 选 `format=bestaudio/best` + `noplaylist`；**必须把 yt-dlp 返回的 `http_headers` 原样喂给 ffmpeg**（YouTube 会查 Referer / UA），ffmpeg 的 `-headers` 直接吃这个 dict。
+- **直链会过期**：断流重连走的是同一套 `resolve()`，所以 YouTube 也会自动重新解析拿新直链，不用另写逻辑。
+- **国内必须开代理**：代理地址从环境变量读（`HTTPS_PROXY` / `http_proxy` / `ALL_PROXY`…），或在系统里开全局/TUN。注意**代理开全局时 B 站 API 可能解析不了**（DNS 被劫持），所以给用户的话术是「规则模式：YouTube 走代理、B 站直连」。
+- yt-dlp 是追着 YouTube 改的项目，报错第一反应就是升级（`pip install -U yt-dlp`）；错误信息里必须同时写清「开代理」和「升级」两条，否则用户只看到一句 `DownloadError`。
+- 实测（本机，用 B 站直播间代跑同一条管道）：yt-dlp 换出直链 + headers → ffmpeg 4 秒精确拿到 128,010 字节 = 16k 单声道 ✓。YouTube 本身因本机没梯子无法实测，等用户开代理再验。
+
 ## 怎么实现的
 
 1. **抓声音**：`pyaudiowpatch` 打开默认输出设备的 WASAPI loopback（设备名带 `[Loopback]`）。只抓**当前默认输出**——中途换耳机要重启脚本。
