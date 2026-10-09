@@ -731,6 +731,15 @@ class SubtitleOverlay:
         geo = app.s.get("overlay_geometry")
         w.geometry(geo or "440x150+60+60")
         w.protocol("WM_DELETE_WINDOW", self.close)
+        # macOS 上 overrideredirect 的窗口容易被主窗口压住 / 一开始不显示 —— 强行抬到最前，
+        # 并延迟再抬一次（刚创建时置顶有时不生效）
+        try:
+            w.lift()
+            w.attributes("-topmost", True)
+            w.after(300, lambda: (self.win.lift(), self.win.attributes("-topmost", True)))
+            w.after(1200, self.win.lift)
+        except tk.TclError:
+            pass
 
     def _btn(self, parent, text, cmd):
         b = self.tk.Label(parent, text=text, bg="#161a22", fg="#c9d1e0", cursor="hand2",
