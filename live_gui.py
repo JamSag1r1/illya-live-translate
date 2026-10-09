@@ -143,6 +143,9 @@ DEFAULTS = {
 SOURCE_LOOPBACK = "抓系统声音（扬声器里放什么就翻什么）"
 SOURCE_URL = "抓直播间网址（只抓这一路，不影响你听别的）"
 SOURCE_DEVICE = "抓音频输入设备（macOS 用 BlackHole）"
+# 界面字体：Windows 用雅黑，macOS 用苹方（写死雅黑的话 Mac 上找不到字体，字号/排版会出问题）
+UI_FONT = "Microsoft YaHei" if os.name == "nt" else ("PingFang SC" if sys.platform == "darwin"
+                                                    else "Noto Sans CJK SC")
 
 
 def load_settings() -> dict:
@@ -196,11 +199,14 @@ class App:
                                     state="readonly"))
         self.v_source = tk.StringVar(value=self.s.get("source", SOURCE_LOOPBACK))
         fr = ttk.Frame(box)
-        ttk.Radiobutton(fr, text="抓系统声音", value=SOURCE_LOOPBACK,
-                        variable=self.v_source).pack(side="left")
+        if os.name == "nt":                          # WASAPI 环回只有 Windows 有，Mac/Linux 不显示
+            ttk.Radiobutton(fr, text="抓系统声音", value=SOURCE_LOOPBACK,
+                            variable=self.v_source).pack(side="left")
+        elif self.v_source.get() == SOURCE_LOOPBACK:
+            self.v_source.set(SOURCE_URL)            # 非 Windows 默认改成抓直播间
         ttk.Radiobutton(fr, text="抓直播间网址", value=SOURCE_URL,
                         variable=self.v_source).pack(side="left", padx=(10, 0))
-        if os.name != "nt":                      # WASAPI 环回只有 Windows 有
+        if os.name != "nt":
             ttk.Radiobutton(fr, text="抓音频输入设备", value=SOURCE_DEVICE,
                             variable=self.v_source).pack(side="left", padx=(10, 0))
         row("声音来源", fr,
@@ -304,7 +310,7 @@ class App:
         self.txt.pack(side="left", fill="both", expand=True)
         self.txt.tag_configure("src", foreground="#8b93a5")
         self.txt.tag_configure("tgt", foreground="#f2f4f8",
-                               font=("Microsoft YaHei", int(self.v_font.get())))
+                               font=(UI_FONT, int(self.v_font.get())))
         self.txt.tag_configure("meta", foreground="#5a6274", spacing3=10)
         self.txt.configure(state="disabled")
 
@@ -565,7 +571,7 @@ class App:
         self.l_font.set(f"{n} px")
         self.s["font_size"] = n
         if hasattr(self, "txt"):
-            self.txt.tag_configure("tgt", font=("Microsoft YaHei", n))
+            self.txt.tag_configure("tgt", font=(UI_FONT, n))
         if getattr(self, "overlay", None):
             self.overlay.set_font_size(n)
 
@@ -575,7 +581,7 @@ class App:
         self.l_font.set(f"{n} px")
         self.s["font_size"] = n
         if hasattr(self, "txt"):
-            self.txt.tag_configure("tgt", font=("Microsoft YaHei", n))
+            self.txt.tag_configure("tgt", font=(UI_FONT, n))
 
     def toggle_overlay(self):
         if getattr(self, "overlay", None):
@@ -588,13 +594,27 @@ class App:
 
     # ────────── 小工具 ──────────
     def open_page(self):
-        if self.v_page.get():
-            webbrowser.open(f"http://127.0.0.1:{self.v_port.get()}/")
-        else:
+        if not self.v_page.get():
             self.v_status.set("这次没开字幕网页（勾上「开字幕网页」再开始就有）。")
+            return
+        url = f"http://127.0.0.1:{self.v_port.get()}/"
+        try:
+            webbrowser.open(url)
+            self.v_status.set(f"字幕页：{url}")
+        except Exception as e:                      # 打不开浏览器也别崩，把地址告诉用户
+            self.v_status.set(f"没能自动打开浏览器（{type(e).__name__}）：请手动访问 {url}")
 
     def open_logs(self):
-        os.startfile(str(HERE / "logs")) if os.name == "nt" else webbrowser.open(str(HERE / "logs"))
+        path = HERE / "logs"
+        try:
+            if os.name == "nt":
+                os.startfile(str(path))
+            elif sys.platform == "darwin":
+                subprocess.Popen(["open", str(path)])       # macOS：用 Finder 打开
+            else:
+                subprocess.Popen(["xdg-open", str(path)])
+        except Exception as e:
+            self.v_status.set(f"打开记录文件夹失败（{type(e).__name__}）：路径是 {path}")
 
     def snapshot(self) -> dict:
         return {"src": self.v_src.get(), "model": self.v_model.get(), "device": self.v_device.get(),
@@ -665,10 +685,15 @@ class SubtitleOverlay:
         bar.pack(fill="x", side="top", padx=8, pady=(4, 0))
         self._btn(bar, "字号 −", lambda: self.bump_font(-2)).pack(side="left")
         self._btn(bar, "字号 +", lambda: self.bump_font(2)).pack(side="left", padx=(4, 10))
+        # 尺寸按钮：macOS 上拖右下角不一定灵，给一套按钮保险
+        self._btn(bar, "宽 −", lambda: self.bump_size(-60, 0)).pack(side="left")
+        self._btn(bar, "宽 +", lambda: self.bump_size(60, 0)).pack(side="left", padx=(4, 10))
+        self._btn(bar, "高 −", lambda: self.bump_size(0, -30)).pack(side="left")
+        self._btn(bar, "高 +", lambda: self.bump_size(0, 30)).pack(side="left", padx=(4, 10))
         self._btn(bar, "原文", self.toggle_src).pack(side="left")
         self._btn(bar, "✕", self.close).pack(side="right")
         tk.Label(bar, text="拖动移动 · 右下角◢缩放", bg="#0b0d12", fg="#5a6274",
-                 font=("Microsoft YaHei", 8)).pack(side="right", padx=6)
+                 font=(UI_FONT, 8)).pack(side="right", padx=6)
 
         self.txt = tk.Text(self.panel, wrap="word", bg="#0b0d12", fg="#f2f4f8",
                            relief="flat", highlightthickness=0, height=4, width=34, padx=10, pady=4)
@@ -682,7 +707,7 @@ class SubtitleOverlay:
 
         # 右下角缩放把手：无边框窗口没有系统边框，只能自己做一个
         self.grip = tk.Label(self.panel, text="◢", bg="#0b0d12", fg="#4b5563",
-                             cursor="size_nw_se", font=("Microsoft YaHei", 11))
+                             cursor="size_nw_se", font=(UI_FONT, 11))
         self.grip.place(relx=1.0, rely=1.0, anchor="se")
         self.grip.bind("<Button-1>", self._resize_start)
         self.grip.bind("<B1-Motion>", self._resize_move)
@@ -694,7 +719,7 @@ class SubtitleOverlay:
 
     def _btn(self, parent, text, cmd):
         b = self.tk.Label(parent, text=text, bg="#161a22", fg="#c9d1e0", cursor="hand2",
-                          font=("Microsoft YaHei", 9), padx=7, pady=2)
+                          font=(UI_FONT, 9), padx=7, pady=2)
         b.bind("<Button-1>", lambda e: cmd())
         return b
 
@@ -715,16 +740,26 @@ class SubtitleOverlay:
 
     def _apply_fonts(self):
         n = self.font_size
-        self.txt.tag_configure("cur", font=("Microsoft YaHei", n, "bold"), foreground="#ffffff",
+        self.txt.tag_configure("cur", font=(UI_FONT, n, "bold"), foreground="#ffffff",
                                spacing1=2, spacing3=4)
-        self.txt.tag_configure("prev", font=("Microsoft YaHei", max(9, n - 11)), foreground="#79839a",
+        self.txt.tag_configure("prev", font=(UI_FONT, max(9, n - 11)), foreground="#79839a",
                                spacing3=2)
-        self.txt.tag_configure("src", font=("Microsoft YaHei", max(9, n - 12)), foreground="#8b93a5")
+        self.txt.tag_configure("src", font=(UI_FONT, max(9, n - 12)), foreground="#8b93a5")
         self._render()
 
     def bump_font(self, d):
         self.set_font_size(self.font_size + d)
         self.app.on_overlay_font(self.font_size)
+
+    def bump_size(self, dw: int, dh: int):
+        """用按钮改浮窗大小（拖右下角在 macOS 上不一定灵，这个保险）"""
+        try:
+            w = max(240, self.win.winfo_width() + dw)
+            h = max(80, self.win.winfo_height() + dh)
+            self.win.geometry(f"{w}x{h}+{self.win.winfo_x()}+{self.win.winfo_y()}")
+            self.app.s["overlay_geometry"] = self.win.geometry()
+        except Exception as e:
+            print(f"[overlay] 改大小失败：{e}")
 
     def set_font_size(self, n):
         self.font_size = max(10, min(64, int(n)))
