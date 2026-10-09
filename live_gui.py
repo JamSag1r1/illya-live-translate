@@ -729,15 +729,21 @@ class SubtitleOverlay:
         self.grip.bind("<MouseWheel>", lambda e: None)
 
         geo = app.s.get("overlay_geometry")
-        w.geometry(geo or "440x150+60+60")
         w.protocol("WM_DELETE_WINDOW", self.close)
-        # macOS 上 overrideredirect 的窗口容易被主窗口压住 / 一开始不显示 —— 强行抬到最前，
-        # 并延迟再抬一次（刚创建时置顶有时不生效）
+        # macOS：无边框窗口在"还没映射到屏幕"时设的 geometry 会被忽略（窗口缩成只有按钮条那么高，
+        # 看着就是"浮窗没字"）。所以先 update 一次、映射后再设，并延迟再设一遍兜底。
+        try:
+            w.update_idletasks()
+        except tk.TclError:
+            pass
+        w.geometry(geo or "440x150+60+60")
         try:
             w.lift()
             w.attributes("-topmost", True)
-            w.after(300, lambda: (self.win.lift(), self.win.attributes("-topmost", True)))
-            w.after(1200, self.win.lift)
+            w.after(250, lambda: (self.win.geometry(geo or "440x150+60+60"),
+                                  self.win.lift(), self.win.attributes("-topmost", True),
+                                  self._render()))          # 顺便重画一次
+            w.after(1200, lambda: (self.win.lift(), self._render()))
         except tk.TclError:
             pass
 
