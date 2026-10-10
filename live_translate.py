@@ -207,10 +207,14 @@ class Translator:
     SYS = ("你是同声传译。把用户给的直播口语翻成自然的中文（口语，不要书面腔、不要加戏）。"
            "只输出译文，不要解释、不要引号。上文的原文/译文只用来保持术语和人称一致。")
 
-    def __init__(self, enabled=True, model="deepseek-flash", timeout=20):
+    def __init__(self, enabled=True, model="deepseek-flash", timeout=20, base_url=None):
         self.enabled = enabled
         self.model = model
         self.timeout = timeout
+        base = (base_url or "").strip().rstrip("/") or "https://api.deepseek.com"
+        # 两种写法都认：只给到前缀（如 https://api.siliconflow.cn/v1），或直接粘完整地址
+        self.url = base if base.endswith("/chat/completions") else base + "/chat/completions"
+        self.is_deepseek = "api.deepseek.com" in self.url
         self.key = self._read_key()
         self.history: deque = deque(maxlen=3)
         if enabled and not self.key:
@@ -253,11 +257,13 @@ class Translator:
             msgs.append({"role": "assistant", "content": tgt})
         msgs.append({"role": "user", "content": text})
         body = {"model": self.model, "messages": msgs, "temperature": 0.2,
-                "max_tokens": 512, "thinking": {"type": "disabled"}}
+                "max_tokens": 512}
+        if self.is_deepseek:            # DeepSeek 专属字段：关掉思考模式；别的厂商不认，不能乱发
+            body["thinking"] = {"type": "disabled"}
         t0 = time.time()
         for attempt in (1, 2):
             try:
-                r = requests.post("https://api.deepseek.com/chat/completions", json=body,
+                r = requests.post(self.url, json=body,
                                   headers={"Authorization": f"Bearer {self.key}"},
                                   timeout=self.timeout)
                 r.raise_for_status()
@@ -329,7 +335,7 @@ class OllamaTranslator:
         r = requests.get(self.host + "/api/tags", timeout=5)
         r.raise_for_status()
         names = [m.get("name", "") for m in (r.json().get("models") or [])]
-        if not any(n == model or n.startswith(model.split(":")[0]) for n in names):
+        if not any(n == model or n == model + ":latest" for n in names):
             raise RuntimeError(f"Ollama 里还没有模型 {model}（先 `ollama pull {model}`）")
         print(f"[mt] 本地大模型就绪：{model} @ {self.host}")
 
@@ -509,6 +515,11 @@ def main():
     ap.add_argument("--local-mt", default=None, metavar="DIR",
                     help="本地翻译模型目录（含 model.bin 和 sentencepiece.bpe.model）")
     ap.add_argument("--ollama-model", default="qwen3:4b", help="Ollama 模型名（配合 --translator ollama）")
+    ap.add_argument("--api-base", default="", metavar="URL",
+                    help="云端翻译的接口地址（OpenAI 兼容格式）。默认 DeepSeek 官方；"
+                         "可填 https://api.siliconflow.cn/v1 这类前缀，会自动拼 /chat/completions")
+    ap.add_argument("--api-model", default="deepseek-flash", metavar="NAME",
+                    help="云端翻译的模型名（配合 --api-base）")
     ap.add_argument("--no-translate", action="store_true", help="只转写不翻译")
     ap.add_argument("--prompt", default=None,
                     help="术语提示，帮 whisper 认专业词，例如 --prompt \"lanthanide, anisotropy, dysprosium, radical ligand\"")
@@ -586,7 +597,8 @@ def main():
     elif args.translator == "ollama":
         translator = OllamaTranslator(args.ollama_model)
     else:
-        translator = Translator(enabled=True)
+        translator = Translator(enabled=True, model=args.api_model,
+                                base_url=args.api_base or None)
 
     cap = None
     if args.input_device:

@@ -68,12 +68,23 @@ MODEL_SIZES = {"tiny": "75 MB", "base": "142 MB", "small": "464 MB", "medium": "
                "large-v3": "3.1 GB", "large-v3-turbo": "1.6 GB"}
 TM_LOCAL = "本地模型"
 TM_API = "云端 API"
-LOCAL_MT = {                      # 界面上的名字 → models/ 下的目录名，或 "ollama:<模型名>"
+LOCAL_MT = {                      # 界面上的名字 → models/ 下的目录名
     "NLLB-200 日→中": "nllb-200-distilled-600M-ct2",
-    "Ollama 本地大模型": "ollama:qwen3:4b",
 }
 LOCAL_MT_DEFAULT = next(iter(LOCAL_MT))
 OLLAMA_HOST = "http://127.0.0.1:11434"
+
+# 云端翻译接口预设：界面显示名 → (接口地址, 默认模型)
+# 地址会自动拼上 /chat/completions（OpenAI 兼容格式），所以填 "https://xxx/v1" 这种前缀即可。
+# 「自定义…」留空，让用户自己填。
+API_PRESETS = {
+    "DeepSeek（默认）": ("https://api.deepseek.com", "deepseek-flash"),
+    "硅基流动 SiliconFlow": ("https://api.siliconflow.cn/v1", "deepseek-ai/DeepSeek-V3"),
+    "智谱 BigModel": ("https://open.bigmodel.cn/api/paas/v4", "glm-4-flash"),
+    "Kimi（Moonshot）": ("https://api.moonshot.cn/v1", "moonshot-v1-8k"),
+    "自定义…": ("", ""),
+}
+API_PRESET_DEFAULT = "DeepSeek（默认）"
 
 
 def ollama_state() -> tuple[bool, list[str]]:
@@ -87,12 +98,28 @@ def ollama_state() -> tuple[bool, list[str]]:
         return False, []
 
 
+def _strip_state(label: str) -> str:
+    """去掉界面标签后面的"（已就绪）"这类状态后缀"""
+    return label.split("（")[0].strip()
+
+
+def mt_value(label: str) -> str:
+    """界面上的标签 → 真正传给子进程的取值。
+    动态列出来的 Ollama 模型长这样：「Ollama · qwen3:8b」，这里还原成 ollama:qwen3:8b。
+    """
+    lab = _strip_state(label)
+    if lab.startswith("Ollama · "):
+        return "ollama:" + lab[len("Ollama · "):].strip()
+    return LOCAL_MT.get(lab, lab)
+
+
 def local_mt_ready(choice: str) -> bool:
-    v = LOCAL_MT.get(choice.split("（")[0].strip(), choice)
+    v = mt_value(choice)
     if v.startswith("ollama:"):
         up, names = ollama_state()
         want = v.split(":", 1)[1]
-        return up and any(n == want or n.startswith(want.split(":")[0]) for n in names)
+        # 精确匹配（Ollama 里没写标签的会显示成 <名字>:latest，也认）
+        return bool(up and any(n == want or n == want + ":latest" for n in names))
     return (models_dir() / v).is_dir()
 
 
@@ -105,23 +132,22 @@ def models_dir() -> Path:
 
 
 def local_mt_choices() -> list[str]:
-    """列本地可用的翻译模型（含 Ollama）"""
+    """列本地可用的翻译模型：NLLB + models/ 里已有的 + **Ollama 里已经装好的**（装了什么就能选什么）"""
     out = []
-    up, _ = ollama_state()
-    for label, v in LOCAL_MT.items():
-        if local_mt_ready(label):
-            state = "已就绪"
-        elif v.startswith("ollama:"):
-            state = "缺模型" if up else "未装 Ollama"
-        else:
-            state = "缺模型"
-        out.append(f"{label}（{state}）")
+    up, names = ollama_state()
+    for label, _v in LOCAL_MT.items():
+        out.append(f"{label}（{'已就绪' if local_mt_ready(label) else '缺模型'}）")
     try:
         for p in sorted(models_dir().glob("*-ct2")):
             if p.name not in LOCAL_MT.values():
                 out.append(p.name)
     except Exception:
         pass
+    if up:
+        for n in sorted(names):          # 装了哪些就列哪些：精确匹配，不再按名字前缀猜
+            out.append(f"Ollama · {n}（已就绪）")
+    else:
+        out.append("Ollama 未启动（先装并启动 Ollama，这里才会列出它的模型）")
     return out or ["（本地还没有翻译模型）"]
 
 
@@ -145,6 +171,7 @@ DEFAULTS = {
     "source": "抓系统声音（扬声器里放什么就翻什么）", "url": "",
     "api_key": "", "console": False,
     "trans_mode": TM_LOCAL, "local_mt": LOCAL_MT_DEFAULT,
+    "api_preset": API_PRESET_DEFAULT, "api_base": "", "api_model": "",
     "font_size": 22,
 }
 SOURCE_LOOPBACK = "抓系统声音（扬声器里放什么就翻什么）"
@@ -262,10 +289,17 @@ class App:
         self.v_key_show = tk.StringVar(value="********" if self.v_key.get() else "")
         self.v_transmode = tk.StringVar(value=self.s.get("trans_mode", TM_LOCAL))
         self.v_localmt = tk.StringVar(value=self.s.get("local_mt", LOCAL_MT_DEFAULT))
+        _mt_choices = local_mt_choices()
+        # 兼容老设置：里面存的是不带状态后缀的裸名字时，对上下拉里带状态的那一项（看着才是"选中"状态）
+        if self.v_localmt.get() not in _mt_choices:
+            for _c in _mt_choices:
+                if _strip_state(_c) == _strip_state(self.v_localmt.get()):
+                    self.v_localmt.set(_c)
+                    break
         fr2 = ttk.Frame(box)
         ttk.Radiobutton(fr2, text="本地模型", value=TM_LOCAL,
                         variable=self.v_transmode).pack(side="left")
-        ttk.Combobox(fr2, textvariable=self.v_localmt, values=local_mt_choices(),
+        ttk.Combobox(fr2, textvariable=self.v_localmt, values=_mt_choices,
                      width=26, state="readonly").pack(side="left", padx=(4, 16))
         ttk.Radiobutton(fr2, text="云端 API", value=TM_API,
                         variable=self.v_transmode).pack(side="left")
@@ -274,6 +308,23 @@ class App:
         e_key.bind("<Button-1>", lambda ev: self.edit_key())
         ttk.Button(fr2, text="修改", width=6, command=self.edit_key).pack(side="left")
         row("翻译模型", fr2)
+
+        # —— 云端接口：选一家自动带出地址和默认模型；想接别家就在「自定义…」里手填 ——
+        self.v_apipreset = tk.StringVar(value=self.s.get("api_preset", API_PRESET_DEFAULT))
+        self.v_apibase = tk.StringVar(value=self.s.get("api_base", ""))
+        self.v_apimodel = tk.StringVar(value=self.s.get("api_model", ""))
+        fr4 = ttk.Frame(box)
+        cb_api = ttk.Combobox(fr4, textvariable=self.v_apipreset, values=list(API_PRESETS),
+                              width=18, state="readonly")
+        cb_api.pack(side="left")
+        cb_api.bind("<<ComboboxSelected>>", lambda ev: self._apply_api_preset())
+        ttk.Label(fr4, text="地址").pack(side="left", padx=(8, 2))
+        ttk.Entry(fr4, textvariable=self.v_apibase, width=28).pack(side="left")
+        ttk.Label(fr4, text="模型").pack(side="left", padx=(8, 2))
+        ttk.Entry(fr4, textvariable=self.v_apimodel, width=17).pack(side="left")
+        row("云端接口", fr4)
+        if not self.v_apibase.get().strip() and not self.v_apimodel.get().strip():
+            self._apply_api_preset()     # 头一次用：把默认那家的地址/模型填上，看着不空
 
         self.v_font = tk.DoubleVar(value=float(self.s.get("font_size", 22)))
         self.l_font = tk.StringVar(value=f"{int(self.v_font.get())} px")
@@ -369,13 +420,21 @@ class App:
             a.append("--console")
         if self.v_transmode.get() == TM_LOCAL:
             sel = self.v_localmt.get()
-            val = LOCAL_MT.get(sel.split("（")[0].strip(), sel)
+            if sel.startswith("Ollama 未启动"):
+                raise ValueError("你选了 Ollama，但本机没检测到它。先装好并启动 Ollama"
+                                 "（https://ollama.com/download 下安装包），"
+                                 "或者改选「NLLB-200」/「云端 API」。")
+            val = mt_value(sel)
             if val.startswith("ollama:"):
                 a += ["--translator", "ollama", "--ollama-model", val.split(":", 1)[1]]
             else:
                 a += ["--translator", "local", "--local-mt", str(local_mt_dir(sel))]
         else:
             a += ["--translator", "api"]
+            if self.v_apibase.get().strip():          # 空=用程序内置的 DeepSeek，行为不变
+                a += ["--api-base", self.v_apibase.get().strip()]
+            if self.v_apimodel.get().strip():
+                a += ["--api-model", self.v_apimodel.get().strip()]
         if self.v_source.get() == SOURCE_URL:
             url = self.v_url.get().strip()
             if not url:
@@ -418,7 +477,7 @@ class App:
                                          "本机 127.0.0.1:11434 上没有 Ollama 服务。\n\n"
                                          "先装并启动 Ollama，或者改选「云端 API」。")
                     return
-                if not any(n == model or n.startswith(model.split(":")[0]) for n in names):
+                if not any(n == model or n == model + ":latest" for n in names):
                     if not messagebox.askyesno("需要下载模型",
                                                f"Ollama 里还没有 {model}（约 2.5 GB）。\n\n"
                                                f"现在开始下载吗？"):
@@ -643,6 +702,13 @@ class App:
         except Exception as e:
             self.v_status.set(f"打开记录文件夹失败（{type(e).__name__}）：路径是 {path}")
 
+    def _apply_api_preset(self):
+        """按选中的那家把地址和默认模型填好（选「自定义…」时不覆盖用户手填的内容）"""
+        base, model = API_PRESETS.get(self.v_apipreset.get(), ("", ""))
+        if base:
+            self.v_apibase.set(base)
+            self.v_apimodel.set(model)
+
     def snapshot(self) -> dict:
         return {"src": self.v_src.get(), "model": self.v_model.get(), "device": self.v_device.get(),
                 "silence": round(self.v_silence.get(), 2), "merge_below": round(self.v_merge.get(), 2),
@@ -652,6 +718,9 @@ class App:
                 "source": self.v_source.get(), "url": self.v_url.get().strip(),
                 "font_size": int(self.v_font.get()),
                 "api_key": self.v_key.get().strip(),
+                "api_preset": self.v_apipreset.get(),
+                "api_base": self.v_apibase.get().strip(),
+                "api_model": self.v_apimodel.get().strip(),
                 "console": bool(self.v_console.get()),
                 "trans_mode": self.v_transmode.get(),
                 "local_mt": self.v_localmt.get(),
