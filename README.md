@@ -178,6 +178,31 @@ python live_gui.py
 > 大多数人不一定需要 Ollama：只想离线免费就选「本地模型」；想要最好质量就选「云端 API」（自己的 key，很便宜）。
 > 只有"既要离线又要质量"才值得装 Ollama。
 
+## 用户反馈的常见问题（报错对照表）
+
+> 这一节汇总用户实际遇到过的报错和解决办法。出问题先在这儿扫一眼，多半就有答案。
+> 下面这些**都是环境或用法问题**，不是程序坏了 —— 照"怎么办"那列做就行。
+
+| 现象 / 报错 | 原因 | 怎么办 |
+|---|---|---|
+| `OSError: 【Errno -9996】 Invalid device`（pyaudiowpatch）| 选了「抓系统声音」，但这台机器**没有能抓的输出设备** | **最省事**：把「声音来源」改成「**抓直播间网址**」。想抓系统声音就先插好耳机/音箱、把默认输出设成一个**真实存在**的设备（别选"未插入"的显示器），也别只连着蓝牙耳机 |
+| `ValueError: Requested float16 compute type, but the target device or backend do not support efficient float16 computation` | 显卡太老（**GTX 10 系及更早**）或驱动太旧；也可能是没有 N 卡却把「运行设备」选成了 cuda | 「运行设备」改成 **cpu**、「识别模型」改成 **small**（CPU 上 large-v3 跟不上直播）；确实有 N 卡的话，先更新显卡驱动 |
+| 云端 API 报 `SSLError` | 代理软件或杀毒软件在**解密 HTTPS**：浏览器认它们的证书，本程序自带的是一套公共证书、不认 | 让 `api.deepseek.com` **不走代理**：代理软件里给它加"直连（DIRECT）"规则，或直接退出代理再跑；还不行就关掉杀毒软件的「HTTPS 扫描 / 网页防护」 |
+| 云端 API 报 `InvalidHeader: Invalid leading whitespace…` | **API key 里混进了换行**（复制时带上的；网页上长 key 常常折成两行）| 界面里把 key 清空重填：**先粘到记事本**看一眼，确认是连续一整行，再从记事本复制过去 |
+| 报 `NOT_FOUND … No such file or directory`（堆栈里有 `sentencepiece`）| **程序放在含中文的路径下**（"桌面""下载"这些实际路径都是中文），C++ 库把路径读成了乱码 | 把整个文件夹挪到**纯英文路径**，例如 `D:\LT\Illya-live-translate-tools`；挪了还报，就是解压不完整，用 7-Zip 重新解压一次 |
+| 云端 API 报 `HTTPError 401 / 402` | key 无效、没填，或者**余额为 0** | 确认 key 是填在**界面里**（不是只放环境变量）、复制完整、DeepSeek 后台余额够 |
+| Mac：`brew: unknown or unsupported macOS version` | Homebrew 版本太旧 | `brew update-reset`；或用 conda 那条路（见 [docs/MACOS.md](docs/MACOS.md)）|
+| Mac：`git … Error in the HTTP2 framing layer` | 连不上 github.com（国内网络）| 给 git 挂代理，或直接把改过的文件拷过去覆盖 |
+| Mac：`URLError: [Errno 8] nodename nor servname provided` | 代理开成了**全局模式**，导致 B 站这类国内域名解析不了 | 代理改「**规则模式**」（国内直连），或者先关掉代理再跑 |
+| 界面里点了 Ollama 的"下载"却报「没能启动 ollama pull」/ 一直提示缺模型 | **Ollama 是要单独安装的软件**，本程序只能帮你拉它里面的模型 | 见上一节「翻译后端怎么选（Ollama 用户必读）」 |
+| 字幕页/浮窗一直没字，但 `logs/*.jsonl` 里明明有内容 | 界面读自己本地接口时被代理拦了（**旧版**问题，v1.0.2 起已修）| 升级到最新版；临时办法：让本地地址 `127.0.0.1` 绕过代理 |
+
+**还是解决不了？** 把这几样发出来，一般一眼就能定位：
+
+1. **报错原文**（截图或复制文字都行；字幕里那种 `[翻译失败: Xxx]` 请把 `Xxx` 带上）
+2. `live-translate-gui\logs\gui_run.log` 的最后二三十行
+3. 你机器的大致情况：系统版本、有没有独显（什么型号）、用的哪种声音来源
+
 ## 模型
 
 仓库里**不含任何模型权重**
