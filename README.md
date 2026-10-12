@@ -190,6 +190,7 @@ python live_gui.py
 | 云端 API 报 `SSLError` | 代理软件或杀毒软件在**解密 HTTPS**：浏览器认它们的证书，本程序自带的是一套公共证书、不认 | 让 `api.deepseek.com` **不走代理**：代理软件里给它加"直连（DIRECT）"规则，或直接退出代理再跑；还不行就关掉杀毒软件的「HTTPS 扫描 / 网页防护」 |
 | 云端 API 报 `InvalidHeader: Invalid leading whitespace…` | **API key 里混进了换行**（复制时带上的；网页上长 key 常常折成两行）| 界面里把 key 清空重填：**先粘到记事本**看一眼，确认是连续一整行，再从记事本复制过去 |
 | 报 `NOT_FOUND … No such file or directory`（堆栈里有 `sentencepiece`）| **程序放在含中文的路径下**（"桌面""下载"这些实际路径都是中文），C++ 库把路径读成了乱码 | 把整个文件夹挪到**纯英文路径**，例如 `D:\LT\Illya-live-translate-tools`；挪了还报，就是解压不完整，用 7-Zip 重新解压一次 |
+| 字幕里出现**英文**、或者一串罗马字（`Yo, kya, nandesho` 这种）| 「待翻译语种」填错了：主播说的是英语却填了 `ja`（或反过来）。Whisper 被强行按错误的语言解码时，会干脆吐出英文原文、或者把语音音译成一串罗马字垃圾 | 把「待翻译语种」改成实际语言（日语直播选 `ja`、英语选 `en`）；不确定就选 **auto**（自己判断，每段多花约一倍时间）。注意：这时候下面的中文译文通常还是对的，看着别扭的其实是被带歪的**原文**那行 |
 | 云端 API 报 `HTTPError 401 / 402` | key 无效、没填，或者**余额为 0** | 确认 key 是填在**界面里**（不是只放环境变量）、复制完整、DeepSeek 后台余额够 |
 | Mac：`brew: unknown or unsupported macOS version` | Homebrew 版本太旧 | `brew update-reset`；或用 conda 那条路（见 [docs/MACOS.md](docs/MACOS.md)）|
 | Mac：`git … Error in the HTTP2 framing layer` | 连不上 github.com（国内网络）| 给 git 挂代理，或直接把改过的文件拷过去覆盖 |
