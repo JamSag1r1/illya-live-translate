@@ -503,7 +503,9 @@ class App:
                 return
         if self.v_transmode.get() == TM_LOCAL:
             sel = self.v_localmt.get()
-            val = LOCAL_MT.get(sel.split("（")[0].strip(), sel)
+            # 必须走 mt_value()：「Ollama · qwen3:4b」这种下拉标签要还原成 ollama:qwen3:4b，
+            # 否则会被当成 models\ 下的文件夹名 → 误弹"缺少本地翻译模型"
+            val = mt_value(sel)
             if val.startswith("ollama:"):
                 model = val.split(":", 1)[1]
                 up, names = ollama_state()
