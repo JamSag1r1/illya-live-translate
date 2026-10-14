@@ -72,7 +72,42 @@ LOCAL_MT = {                      # 界面上的名字 → models/ 下的目录�
     "NLLB-200 日→中": "nllb-200-distilled-600M-ct2",
 }
 LOCAL_MT_DEFAULT = next(iter(LOCAL_MT))
-OLLAMA_HOST = "http://127.0.0.1:11434"
+
+
+def ollama_match(want: str, names: list[str]) -> str | None:
+    """把设置里的模型名对到 Ollama 实际装的模型上（与 live_translate.py 里那份保持一致）。
+
+    以前必须一模一样，于是设置里写 qwen3 而实际装的是 qwen3:4b 就会报"还没有模型"——
+    模型明明在，用户却读不出来。
+    """
+    want = (want or "").strip()
+    if not want:
+        return None
+    base = want.split(":")[0]
+    if want in names:
+        return want
+    if ":" not in want or want.endswith(":latest"):
+        cands = sorted(n for n in names if n.split(":")[0] == base)
+        if cands:
+            return cands[0]
+    if base in names and want.endswith(":latest"):
+        return base
+    return None
+
+
+def _ollama_host() -> str:
+    """本机 Ollama 地址，可用环境变量 OLLAMA_HOST 覆盖（用户改了端口或装到别的机器上）"""
+    h = (os.environ.get("OLLAMA_HOST") or "").strip().strip('"').strip("'")
+    if not h:
+        return "http://127.0.0.1:11434"
+    if not h.startswith(("http://", "https://")):
+        h = "http://" + h
+    if ":" not in h.split("//", 1)[-1]:
+        h += ":11434"
+    return h.rstrip("/")
+
+
+OLLAMA_HOST = _ollama_host()
 
 # 云端翻译接口预设：界面显示名 → (接口地址, 默认模型)
 # 地址会自动拼上 /chat/completions（OpenAI 兼容格式），所以填 "https://xxx/v1" 这种前缀即可。
@@ -118,8 +153,8 @@ def local_mt_ready(choice: str) -> bool:
     if v.startswith("ollama:"):
         up, names = ollama_state()
         want = v.split(":", 1)[1]
-        # 精确匹配（Ollama 里没写标签的会显示成 <名字>:latest，也认）
-        return bool(up and any(n == want or n == want + ":latest" for n in names))
+        # 放宽匹配：设置里写 qwen3、实际装的是 qwen3:4b 也算就绪（以前要求一模一样 → 误报"缺模型"）
+        return bool(up and ollama_match(want, names))
     return (models_dir() / v).is_dir()
 
 
@@ -477,7 +512,7 @@ class App:
                                          "本机 127.0.0.1:11434 上没有 Ollama 服务。\n\n"
                                          "先装并启动 Ollama，或者改选「云端 API」。")
                     return
-                if not any(n == model or n == model + ":latest" for n in names):
+                if not ollama_match(model, names):
                     if not messagebox.askyesno("需要下载模型",
                                                f"Ollama 里还没有 {model}（约 2.5 GB）。\n\n"
                                                f"现在开始下载吗？"):

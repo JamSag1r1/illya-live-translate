@@ -29,6 +29,15 @@ from pathlib import Path
 
 os.environ.setdefault("HF_ENDPOINT", "https://hf-mirror.com")   # 国内直连 huggingface 不通
 
+# 本机回环（127.0.0.1）永远不走代理：Clash / Watt Toolkit / 各类加速器会把系统代理设上，
+# 连"自己电脑上的 Ollama（11434）"的请求也会被送去代理 → 代理去连它自己的 11434 → 回 502，
+# 表现出来就是"Ollama 里的模型读不出来"。这里强制把回环地址排除在代理之外。
+_np = os.environ.get("NO_PROXY") or os.environ.get("no_proxy") or ""
+if "127.0.0.1" not in _np:
+    _np = ",".join([x for x in [_np, "127.0.0.1", "localhost", "::1"] if x])
+    os.environ["NO_PROXY"] = _np
+    os.environ["no_proxy"] = _np
+
 import numpy as np
 
 HERE = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) \
@@ -343,21 +352,62 @@ class LocalTranslator:
         return self.sp.decode(out), time.time() - t0
 
 
+def ollama_match(want: str, names: list[str]) -> str | None:
+    """把设置里的模型名对到 Ollama 实际装的模型上，返回真正要用的名字（对不上返回 None）。
+
+    以前是"必须一模一样"，于是设置里写 qwen3 而装的是 qwen3:4b 就会报"还没有模型"——
+    模型明明在，用户却读不出来。现在：完全相同 → 认；只写了名字（qwen3）→ 认同名的 qwen3:*；
+    写的是 :latest → 也按同名匹配。
+    （live_gui.py 里有一份同样的实现，改这个记得一起改；GUI 是用子进程调本文件，不互相 import）
+    """
+    want = (want or "").strip()
+    if not want:
+        return None
+    base = want.split(":")[0]
+    if want in names:
+        return want
+    if ":" not in want or want.endswith(":latest"):
+        cands = sorted(n for n in names if n.split(":")[0] == base)
+        if cands:
+            return cands[0]
+    if base in names and want.endswith(":latest"):
+        return base
+    return None
+
+
+def ollama_host() -> str:
+    """本机 Ollama 地址：默认 127.0.0.1:11434；可用环境变量 OLLAMA_HOST 覆盖
+    （用户改了端口、或 Ollama 装在另一台机器上时用得上）。"""
+    h = (os.environ.get("OLLAMA_HOST") or "").strip().strip('"').strip("'")
+    if not h:
+        return "http://127.0.0.1:11434"
+    if not h.startswith(("http://", "https://")):
+        h = "http://" + h
+    if ":" not in h.split("//", 1)[-1]:
+        h += ":11434"
+    return h.rstrip("/")
+
+
 class OllamaTranslator:
     """本地大模型翻译（走本机 Ollama 的 HTTP 接口）：质量远好于 NLLB，但需要先装 Ollama 并拉好模型。"""
 
     SYS = "你是同声传译。把用户给的直播口语翻成自然的中文口语，只输出译文，不要解释。"
 
-    def __init__(self, model: str = "qwen3:4b", host: str = "http://127.0.0.1:11434",
-                 timeout: float = 60.0):
+    def __init__(self, model: str = "qwen3:4b", host: str | None = None,
+                 timeout: float = 120.0):
         import requests
-        self.model, self.host, self.timeout = model, host.rstrip("/"), timeout
+        self.host, self.timeout = (host or ollama_host()).rstrip("/"), timeout
         r = requests.get(self.host + "/api/tags", timeout=5)
         r.raise_for_status()
         names = [m.get("name", "") for m in (r.json().get("models") or [])]
-        if not any(n == model or n == model + ":latest" for n in names):
-            raise RuntimeError(f"Ollama 里还没有模型 {model}（先 `ollama pull {model}`）")
-        print(f"[mt] 本地大模型就绪：{model} @ {self.host}")
+        hit = ollama_match(model, names)
+        if not hit:
+            have = "、".join(sorted(names)) or "（一个都没有）"
+            raise RuntimeError(f"Ollama 里没有 {model}。你装的是：{have}"
+                               f"　→　到设置里选一个，或先 `ollama pull {model}`")
+        self.model = hit
+        extra = f"（设置里写的是 {model}）" if hit != model else ""
+        print(f"[mt] 本地大模型就绪：{self.model} @ {self.host}{extra}")
 
     def translate(self, text: str) -> tuple[str, float]:
         import requests
@@ -372,7 +422,7 @@ class OllamaTranslator:
             r.raise_for_status()
             return (r.json().get("message", {}).get("content") or "").strip(), time.time() - t0
         except Exception as e:
-            return f"[本地翻译失败: {type(e).__name__}]", time.time() - t0
+            return f"[本地翻译失败: {type(e).__name__}: {str(e)[:80]}]", time.time() - t0
 
 
 # ────────────────────────────── 输出 ──────────────────────────────
