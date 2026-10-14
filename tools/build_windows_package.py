@@ -131,8 +131,15 @@ def main():
 
         # 再清掉一批确定用不上的东西（省体积；顶到 GitHub 单附件 2 GiB 上限时这些就是关键）
         for junk in (stage / DIST / "_internal" / "hf_xet",          # HF 的下载加速器，我们用魔搭
-                     stage / DIST / "_internal" / "nvidia" / "cuda_nvrtc"):  # 推理不需要 NVRTC
+                     stage / DIST / "_internal" / "nvidia" / "cuda_nvrtc",  # 推理不需要 NVRTC
+                     # torch 只是「转换离线模型」那个开发脚本用的；运行端只用 ctranslate2 + sentencepiece。
+                     # 实测：带上 torch 时 zip = 2.090 GiB（超限 ✗），去掉后 = 1.991 GiB（✓ 能传）
+                     stage / DIST / "_internal" / "torch"):
             if junk.exists():
+                shutil.rmtree(junk, ignore_errors=True)
+                print(f"  - 去掉 {junk.name}")
+        for pat in ("torch-*.dist-info", "torchgen", "functorch"):    # torch 的附属目录
+            for junk in (stage / DIST / "_internal").glob(pat):
                 shutil.rmtree(junk, ignore_errors=True)
                 print(f"  - 去掉 {junk.name}")
 

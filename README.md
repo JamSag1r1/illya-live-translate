@@ -194,7 +194,7 @@ python live_gui.py
 | Ollama 翻译**很慢**（每句好几秒，字幕慢半拍） | 选到了**带"思考/推理"**的模型（`qwen3`、`deepseek-r1` 这类），它翻译前先自己想一大段 | 换 **`qwen2.5:3b`**（不带思考，实测快近百倍，质量相当）：`ollama pull qwen2.5:3b`，再在界面下拉里选它 |
 | `OSError: 【Errno -9996】 Invalid device`（pyaudiowpatch）| 选了「抓系统声音」，但这台机器**没有能抓的输出设备** | **最省事**：把「声音来源」改成「**抓直播间网址**」。想抓系统声音就先插好耳机/音箱、把默认输出设成一个**真实存在**的设备（别选"未插入"的显示器），也别只连着蓝牙耳机 |
 | `ValueError: Requested float16 compute type, but the target device or backend do not support efficient float16 computation` | 显卡太老（**GTX 10 系及更早**）或驱动太旧；也可能是没有 N 卡却把「运行设备」选成了 cuda | 「运行设备」改成 **cpu**、「识别模型」改成 **small**（CPU 上 large-v3 跟不上直播）；确实有 N 卡的话，先更新显卡驱动 |
-| 云端 API 报 `SSLError` | 代理软件或杀毒软件在**解密 HTTPS**：浏览器认它们的证书，本程序自带的是一套公共证书、不认 | 让 `api.deepseek.com` **不走代理**：代理软件里给它加"直连（DIRECT）"规则，或直接退出代理再跑；还不行就关掉杀毒软件的「HTTPS 扫描 / 网页防护」 |
+| 云端 API 报 `SSLError` | 代理软件或杀毒软件在**解密 HTTPS**：浏览器认它们的证书，本程序自带的是一套公共证书、不认 | 让 `api.deepseek.com` **不走代理**：代理软件里给它加"直连（DIRECT）"规则，或直接退出代理再跑；还不行就关掉杀毒软件的「HTTPS 扫描 / 网页防护」。（本程序**不会**改成"信任系统证书库"来绕过它 —— 那等于让中间人看到你的 API key，宁可报错） |
 | 云端 API 报 `InvalidHeader: Invalid leading whitespace…` | **API key 里混进了换行**（复制时带上的；网页上长 key 常常折成两行）| 界面里把 key 清空重填：**先粘到记事本**看一眼，确认是连续一整行，再从记事本复制过去 |
 | 报 `NOT_FOUND … No such file or directory`（堆栈里有 `sentencepiece`）| **程序放在含中文的路径下**（"桌面""下载"这些实际路径都是中文），C++ 库把路径读成了乱码 | 把整个文件夹挪到**纯英文路径**，例如 `D:\LT\Illya-live-translate-tools`；挪了还报，就是解压不完整，用 7-Zip 重新解压一次 |
 | 字幕里出现**英文**、或者一串罗马字（`Yo, kya, nandesho` 这种）| 「待翻译语种」填错了：主播说的是英语却填了 `ja`（或反过来）。Whisper 被强行按错误的语言解码时，会干脆吐出英文原文、或者把语音音译成一串罗马字垃圾 | 把「待翻译语种」改成实际语言（日语直播选 `ja`、英语选 `en`）；不确定就选 **auto**（自己判断，每段多花约一倍时间）。注意：这时候下面的中文译文通常还是对的，看着别扭的其实是被带歪的**原文**那行 |
