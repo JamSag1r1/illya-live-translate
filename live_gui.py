@@ -555,7 +555,7 @@ class App:
             flags = (subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
                      if os.name == "nt" else 0)          # 默认安静，不要黑框
         env = dict(os.environ)
-        key = self.v_key.get().strip()
+        key = "".join(self.v_key.get().split())     # 去掉复制 key 时带进来的换行/空格（否则报 InvalidHeader）
         if key:
             env["DEEPSEEK_API_KEY"] = key               # 走环境变量，不写进命令行
         cmdline = self._cmd_prefix() + args

@@ -38,6 +38,30 @@ if "127.0.0.1" not in _np:
     os.environ["NO_PROXY"] = _np
     os.environ["no_proxy"] = _np
 
+
+def clean_key(k: str | None) -> str | None:
+    """去掉 API key 里的所有空白（换行 / 空格 / Tab）。
+
+    从网页复制长 key 时经常带上换行，requests 会直接报
+    `InvalidHeader: Invalid leading whitespace, reserved character(s), or return…`
+    —— 用户完全看不懂。在这里统一清掉（实测：只有换行会触发，空格引号 Tab 本来不报）。
+    """
+    return "".join((k or "").split()) or None
+
+
+def warn_non_ascii_path(p) -> None:
+    """路径里有中文 / 日文时提前说一句。
+
+    sentencepiece / ctranslate2 的 C++ 层按窄字符读路径，中文路径下会报
+    `NOT_FOUND … No such file or directory`，堆栈里看不出跟中文有关，用户查不动。
+    只打一行日志提示，不拦人。
+    """
+    s = str(p)
+    if any(ord(c) > 127 for c in s):
+        print(f"[warn] 路径里有中文/非 ASCII：{s}\n"
+              f"       这会让 sentencepiece/ctranslate2 报 NOT_FOUND（找不到文件）。\n"
+              f"       建议把程序和模型放到纯英文路径，比如 E:\\live-translate\\")
+
 import numpy as np
 
 HERE = Path(sys.executable).resolve().parent if getattr(sys, "frozen", False) \
@@ -224,7 +248,7 @@ class Translator:
         # 两种写法都认：只给到前缀（如 https://api.siliconflow.cn/v1），或直接粘完整地址
         self.url = base if base.endswith("/chat/completions") else base + "/chat/completions"
         self.is_deepseek = "api.deepseek.com" in self.url
-        self.key = self._read_key()
+        self.key = clean_key(self._read_key())      # 顺手清掉复制 key 时带进来的换行
         self.history: deque = deque(maxlen=3)
         if enabled and not self.key:
             print("[translate] 没找到 DEEPSEEK_API_KEY，退化为只显示原文")
@@ -256,6 +280,41 @@ class Translator:
                 pass
         return None
 
+    # 国内接口默认不走代理：本机代理（Clash / Watt Toolkit / 各种加速器）经常把国内域名也接管
+    # → 明明能直连的接口反而 SSL 报错 / 超时。国外接口（OpenAI 等）仍走系统代理，否则连不上。
+    DOMESTIC = ("api.deepseek.com", "deepseek.com", "siliconflow.cn", "bigmodel.cn",
+                "moonshot.cn", "dashscope.aliyuncs.com", "volces.com", "baichuan-ai.com",
+                "stepfun.com", "hunyuan.tencent.com", "minimax.chat", "sensenova.cn")
+
+    def _proxies(self):
+        """国内接口 → 强制直连（返回禁用代理的 dict）；其它 → None（照常走系统代理）"""
+        host = self.url.split("//", 1)[-1].split("/")[0].split(":")[0].lower()
+        if host.endswith(".cn") or any(d in host for d in self.DOMESTIC):
+            return {"http": None, "https": None}
+        return None
+
+    def _human(self, e: Exception) -> str:
+        """把 requests 的异常翻成用户能照着做的人话（带上状态码）"""
+        import requests
+        code = getattr(getattr(e, "response", None), "status_code", None)
+        if isinstance(e, requests.exceptions.HTTPError) and code:
+            hint = {400: "请求被拒（模型名或参数不对）", 401: "key 无效或没填",
+                    402: "余额不足", 403: "被拒绝（多半是代理 / 杀毒在中间挡）",
+                    404: "接口地址或模型名不对", 407: "代理要求认证 —— 关掉代理，或给这个接口加直连规则",
+                    429: "请求太频繁", 500: "对方服务器出错", 502: "网关错误（多半是代理 / 加速器在中间挡）",
+                    503: "对方服务暂时不可用"}.get(int(code), "对方返回了错误状态")
+            return f"HTTP {code} —— {hint}"
+        if isinstance(e, requests.exceptions.SSLError):
+            return ("SSL 握手失败：你机器上的代理 / 杀毒软件在解密 HTTPS。"
+                    "把接口地址设为直连，或关掉杀毒软件的「HTTPS 扫描 / 网页防护」")
+        if isinstance(e, requests.exceptions.ProxyError):
+            return "连不上代理（代理软件没开，或端口填错）"
+        if isinstance(e, requests.exceptions.Timeout):
+            return "等太久超时了（网络慢，或对方服务慢）"
+        if isinstance(e, requests.exceptions.ConnectionError):
+            return "连不上服务器（断网，或代理把这个域名挡了）"
+        return f"{type(e).__name__}: {str(e)[:60]}"
+
     def translate(self, text: str) -> tuple[str, float]:
         if not self.enabled:
             return "", 0.0
@@ -274,14 +333,14 @@ class Translator:
             try:
                 r = requests.post(self.url, json=body,
                                   headers={"Authorization": f"Bearer {self.key}"},
-                                  timeout=self.timeout)
+                                  timeout=self.timeout, proxies=self._proxies())
                 r.raise_for_status()
                 out = (r.json()["choices"][0]["message"]["content"] or "").strip()
                 self.history.append((text, out))
                 return out, time.time() - t0
             except Exception as e:
                 if attempt == 2:
-                    return f"[翻译失败: {type(e).__name__}]", time.time() - t0
+                    return f"[翻译失败: {self._human(e)}]", time.time() - t0
                 time.sleep(0.5)
         return "", 0.0
 
@@ -653,8 +712,30 @@ def main():
     compute = args.compute_type or ("float16" if device == "cuda" else "int8")
     t0 = time.time()
     print(f"[model] 加载 {Path(model_path).name} ({device}/{compute}) …")
-    model = WhisperModel(model_path, device=device, compute_type=compute,
-                         cpu_threads=args.threads, num_workers=1)
+    warn_non_ascii_path(model_path)          # 中文路径会让 sentencepiece 报 NOT_FOUND，先提醒
+    try:
+        model = WhisperModel(model_path, device=device, compute_type=compute,
+                             cpu_threads=args.threads, num_workers=1)
+    except Exception as e:
+        msg = str(e)
+        if "float16" in msg:
+            # 老显卡（GTX 10 系及以前）/ 驱动不支持 float16：自动降级，别让用户自己去改设置
+            compute = "int8_float32" if device == "cuda" else "int8"
+            print(f"[model] 这台机器不支持 float16，自动改用 {compute} 重试")
+            try:
+                model = WhisperModel(model_path, device=device, compute_type=compute,
+                                     cpu_threads=args.threads, num_workers=1)
+            except Exception as e2:
+                print(f"[model] 还是不行（{type(e2).__name__}），改用 CPU 跑（慢一些但能用）")
+                model = WhisperModel(model_path, device="cpu", compute_type="int8",
+                                     cpu_threads=args.threads, num_workers=1)
+        elif device == "cuda":
+            # 显卡不可用（没装 CUDA 库 / 驱动太旧 / 显存不够）：自动退回 CPU，别直接崩
+            print(f"[model] GPU 用不了（{type(e).__name__}: {msg[:70]}），改用 CPU 跑（慢一些但能用）")
+            model = WhisperModel(model_path, device="cpu", compute_type="int8",
+                                 cpu_threads=args.threads, num_workers=1)
+        else:
+            raise
     print(f"[model] 就绪 ({time.time()-t0:.1f}s)")
 
     logs = LOGS_DIR / f"live_{datetime.now():%Y%m%d_%H%M%S}.jsonl"
