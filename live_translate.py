@@ -297,6 +297,26 @@ class LocalTranslator:
         self.tr = ctranslate2.Translator(str(md), device=device, compute_type=ct,
                                          inter_threads=1, intra_threads=threads)
         print(f"[mt] 本地翻译就绪：{md.name} ({device}/{ct})")
+        self.src_lang: str | None = None      # 由 set_src_lang() 用 whisper 判出的语言填入
+
+    # Whisper 报的语种码 → NLLB 的语种记号（认不出来的再退回"看字符猜"）
+    NLLB_LANG = {
+        "en": "eng_Latn", "ja": "jpn_Jpan", "ko": "kor_Hang", "zh": "zho_Hans",
+        "fr": "fra_Latn", "de": "deu_Latn", "es": "spa_Latn", "pt": "por_Latn",
+        "it": "ita_Latn", "ru": "rus_Cyrl", "uk": "ukr_Cyrl", "ar": "arb_Arab",
+        "th": "tha_Thai", "vi": "vie_Latn", "id": "ind_Latn", "ms": "zsm_Latn",
+        "hi": "hin_Deva", "ta": "tam_Taml", "bn": "ben_Beng", "ur": "urd_Arab",
+        "nl": "nld_Latn", "pl": "pol_Latn", "tr": "tur_Latn", "sv": "swe_Latn",
+        "da": "dan_Latn", "no": "nob_Latn", "fi": "fin_Latn", "cs": "ces_Latn",
+        "ro": "ron_Latn", "hu": "hun_Latn", "el": "ell_Grek", "fa": "pes_Arab",
+        "he": "heb_Hebr", "sw": "swh_Latn", "tl": "tgl_Latn",
+    }
+
+    def set_src_lang(self, code: str | None):
+        """告诉翻译器"原文是什么语言"。用 whisper 判出来的那个（比看字符猜准得多）：
+        以前俄语/阿拉伯语/希腊语这类非拉丁字母会被猜成中文 → NLLB 收到"中→中"就原样返回，
+        表现出来就是"除了日/英/韩，其它语言都不翻译"。"""
+        self.src_lang = self.NLLB_LANG.get((code or "").strip().lower()[:2]) if code else None
 
     @staticmethod
     def _src_lang(text: str) -> str:
@@ -314,7 +334,7 @@ class LocalTranslator:
             return "", 0.0
         # 语种 token 要整块贴在句首；句尾必须补 </s>（CT2 这份配置 add_source_eos=False，
         # 少了它模型只会吐语种 token 或复读“▁”——实测踩过）
-        toks = [self._src_lang(text)] + self.sp.encode(text, out_type=str) + ["</s>"]
+        toks = [self.src_lang or self._src_lang(text)] + self.sp.encode(text, out_type=str) + ["</s>"]
         res = self.tr.translate_batch([toks], target_prefix=[["zho_Hans"]], beam_size=1,
                                       max_batch_size=1)
         out = list(res[0].hypotheses[0])
@@ -656,6 +676,12 @@ def main():
                 seg, language=None if args.src == "auto" else args.src,
                 beam_size=1, temperature=0.0, vad_filter=False,
                 condition_on_previous_text=False, initial_prompt=prompt)
+            # 把 whisper 判出来的语言告诉翻译器：本地 NLLB 靠它选源语言。
+            # （以前是自己按字符猜 → 非日/英/韩的语种会被猜成中文 → NLLB 原样返回）
+            try:
+                translator.set_src_lang(getattr(info, "language", None))
+            except Exception:
+                pass
             # 丢掉静音段上的幻觉（whisper 会在噪声上凭空造句，no_speech_prob 高）
             keep = []
             for s in segments:
