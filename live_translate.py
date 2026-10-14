@@ -393,7 +393,7 @@ class OllamaTranslator:
 
     SYS = "你是同声传译。把用户给的直播口语翻成自然的中文口语，只输出译文，不要解释。"
 
-    def __init__(self, model: str = "qwen3:4b", host: str | None = None,
+    def __init__(self, model: str = "qwen2.5:3b", host: str | None = None,
                  timeout: float = 120.0):
         import requests
         self.host, self.timeout = (host or ollama_host()).rstrip("/"), timeout
@@ -584,7 +584,7 @@ def main():
                     help="api=云端 API / local=本地 NLLB（CT2）/ ollama=本机 Ollama 大模型")
     ap.add_argument("--local-mt", default=None, metavar="DIR",
                     help="本地翻译模型目录（含 model.bin 和 sentencepiece.bpe.model）")
-    ap.add_argument("--ollama-model", default="qwen3:4b", help="Ollama 模型名（配合 --translator ollama）")
+    ap.add_argument("--ollama-model", default="qwen2.5:3b", help="Ollama 模型名（配合 --translator ollama）")
     ap.add_argument("--api-base", default="", metavar="URL",
                     help="云端翻译的接口地址（OpenAI 兼容格式）。默认 DeepSeek 官方；"
                          "可填 https://api.siliconflow.cn/v1 这类前缀，会自动拼 /chat/completions")

@@ -72,6 +72,7 @@ LOCAL_MT = {                      # 界面上的名字 → models/ 下的目录�
     "NLLB-200 日→中": "nllb-200-distilled-600M-ct2",
 }
 LOCAL_MT_DEFAULT = next(iter(LOCAL_MT))
+OLLAMA_SUGGEST = "qwen2.5:3b"        # 推荐的默认 Ollama 模型：不带"思考"，每句约 0.1 秒（qwen3 那类要 5–10 秒）
 
 
 def ollama_match(want: str, names: list[str]) -> str | None:
@@ -179,6 +180,8 @@ def local_mt_choices() -> list[str]:
     except Exception:
         pass
     if up:
+        if not names:                    # 装好了 Ollama 但一个模型都没有：给一条能点的入口，别让用户自己去命令行
+            out.append(f"Ollama · {OLLAMA_SUGGEST}（还没装，选它点开始会提示下载）")
         for n in sorted(names):          # 装了哪些就列哪些：精确匹配，不再按名字前缀猜
             out.append(f"Ollama · {n}（已就绪）")
     else:
@@ -516,7 +519,7 @@ class App:
                     return
                 if not ollama_match(model, names):
                     if not messagebox.askyesno("需要下载模型",
-                                               f"Ollama 里还没有 {model}（约 2.5 GB）。\n\n"
+                                               f"Ollama 里还没有 {model}（约 2 GB）。\n\n"
                                                f"现在开始下载吗？"):
                         self.v_status.set("已取消：模型还没准备好。")
                         return
